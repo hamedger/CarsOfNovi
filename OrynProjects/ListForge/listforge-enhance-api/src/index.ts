@@ -16,12 +16,250 @@ app.get("/health", (_req, res) => {
   });
 });
 
-app.post("/v1/photo/enhance", (_req, res) => {
-  res.status(501).json({
-    error: "NotImplemented",
-    message:
-      "Enhancement pipeline is not implemented yet. Deploy verified with this endpoint scaffold."
+app.get("/", (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: "listforge-enhance-api",
+    message: "Use GET /health or POST /v1/photo/enhance",
+    endpoints: {
+      health: "GET /health",
+      enhance: "POST /v1/photo/enhance",
+      enhanceBatch: "POST /v1/photo/enhance/batch",
+    },
   });
+});
+
+type BackgroundStyle =
+  | "original"
+  | "studio_white"
+  | "studio_gray"
+  | "showroom"
+  | "outdoor_soft"
+  | "blur_subtle";
+
+type EnhanceMode = "auto" | "electronics" | "general";
+
+type EnhanceRequest = {
+  imageBase64: string;
+  mode: EnhanceMode;
+  stepId?: string;
+  backgroundStyle?: BackgroundStyle;
+  enhanceLevel?: "standard" | "pro";
+};
+
+type BatchEnhanceRequest = {
+  photos: Array<{
+    id: string;
+    imageBase64: string;
+    mode: EnhanceMode;
+    stepId?: string;
+    backgroundStyle?: BackgroundStyle;
+    enhanceLevel?: "standard" | "pro";
+  }>;
+};
+
+const allowedBackgrounds = new Set<BackgroundStyle>([
+  "original",
+  "studio_white",
+  "studio_gray",
+  "showroom",
+  "outdoor_soft",
+  "blur_subtle",
+]);
+
+function isExteriorStep(stepId?: string) {
+  return stepId === "front_3_4" || stepId === "side" || stepId === "rear_3_4";
+}
+
+function normalizeBackgroundStyle(stepId: string | undefined, requested: BackgroundStyle): BackgroundStyle {
+  if (!isExteriorStep(stepId)) return "original";
+  return requested;
+}
+
+function backgroundColorForStyle(style: BackgroundStyle): string | null {
+  switch (style) {
+    case "studio_white":
+      return "ffffff";
+    case "studio_gray":
+      return "d7d7d7";
+    case "showroom":
+      return "eceff3";
+    case "outdoor_soft":
+      return "f3f7ff";
+    case "blur_subtle":
+      return "f4f4f4";
+    case "original":
+    default:
+      return null;
+  }
+}
+
+async function callRemoveBg(
+  imageBuffer: Buffer,
+  backgroundStyle: BackgroundStyle,
+  timeoutMs: number,
+): Promise<Buffer> {
+  const apiKey = process.env.REMOVE_BG_API_KEY;
+  const baseUrl = process.env.REMOVE_BG_API_BASE_URL ?? "https://api.remove.bg/v1.0";
+  if (!apiKey) {
+    throw new Error("REMOVE_BG_API_KEY is not configured.");
+  }
+
+  const formData = new FormData();
+  formData.append("image_file_b64", imageBuffer.toString("base64"));
+  formData.append("size", "auto");
+  formData.append("format", "jpg");
+
+  const bgColor = backgroundColorForStyle(backgroundStyle);
+  if (bgColor) {
+    formData.append("bg_color", bgColor);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${baseUrl}/removebg`, {
+      method: "POST",
+      headers: {
+        "X-Api-Key": apiKey,
+      },
+      body: formData,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`remove.bg failed (${response.status}): ${errorBody.slice(0, 240)}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function enhanceSingle(input: EnhanceRequest) {
+  const start = Date.now();
+  const requestedStyle = input.backgroundStyle ?? "original";
+  const normalizedStyle = normalizeBackgroundStyle(input.stepId, requestedStyle);
+  const provider = process.env.ENHANCE_PROVIDER ?? "remove_bg";
+  const timeoutMs = Number(process.env.REQUEST_TIMEOUT_MS ?? 12000);
+
+  const originalBuffer = Buffer.from(input.imageBase64, "base64");
+  if (!originalBuffer.length) {
+    throw new Error("imageBase64 must be a valid base64 image.");
+  }
+
+  if (provider !== "remove_bg" || normalizedStyle === "original") {
+    return {
+      optimizedImageBase64: originalBuffer.toString("base64"),
+      backgroundRemoved: false,
+      backgroundStyleApplied: normalizedStyle,
+      provider: provider === "remove_bg" ? "fallback" : "internal",
+      latencyMs: Date.now() - start,
+    };
+  }
+
+  try {
+    const enhancedBuffer = await callRemoveBg(originalBuffer, normalizedStyle, timeoutMs);
+    return {
+      optimizedImageBase64: enhancedBuffer.toString("base64"),
+      backgroundRemoved: true,
+      backgroundStyleApplied: normalizedStyle,
+      provider: "remove_bg",
+      latencyMs: Date.now() - start,
+    };
+  } catch {
+    return {
+      optimizedImageBase64: originalBuffer.toString("base64"),
+      backgroundRemoved: false,
+      backgroundStyleApplied: "original" as const,
+      provider: "fallback" as const,
+      latencyMs: Date.now() - start,
+    };
+  }
+}
+
+app.post("/v1/photo/enhance", async (req, res) => {
+  const body = req.body as EnhanceRequest;
+  if (!body || typeof body.imageBase64 !== "string" || !body.imageBase64) {
+    res.status(400).json({ error: "ValidationError", message: "imageBase64 is required." });
+    return;
+  }
+
+  if (!body.mode || !["auto", "electronics", "general"].includes(body.mode)) {
+    res.status(400).json({ error: "ValidationError", message: "mode must be auto|electronics|general." });
+    return;
+  }
+
+  const backgroundStyle = body.backgroundStyle ?? "original";
+  if (!allowedBackgrounds.has(backgroundStyle)) {
+    res.status(400).json({ error: "ValidationError", message: "backgroundStyle is invalid." });
+    return;
+  }
+
+  try {
+    const result = await enhanceSingle(body);
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(500).json({
+      error: "EnhanceFailed",
+      message: error instanceof Error ? error.message : "Enhancement failed.",
+    });
+  }
+});
+
+app.get("/v1/photo/enhance", (_req, res) => {
+  res.status(405).json({
+    error: "MethodNotAllowed",
+    message: "Use POST /v1/photo/enhance with JSON body.",
+  });
+});
+
+app.post("/v1/photo/enhance/batch", async (req, res) => {
+  const body = req.body as BatchEnhanceRequest;
+  const photos = body?.photos;
+  if (!Array.isArray(photos) || photos.length === 0) {
+    res.status(400).json({ error: "ValidationError", message: "photos[] is required." });
+    return;
+  }
+
+  const results = await Promise.all(
+    photos.map(async (photo) => {
+      if (!photo?.id || !photo?.imageBase64 || !photo?.mode) {
+        return {
+          id: photo?.id ?? "unknown",
+          ok: false,
+          error: "Invalid photo payload.",
+        };
+      }
+      const style = photo.backgroundStyle ?? "original";
+      if (!allowedBackgrounds.has(style)) {
+        return {
+          id: photo.id,
+          ok: false,
+          error: "Invalid backgroundStyle.",
+        };
+      }
+      try {
+        const enhanced = await enhanceSingle(photo);
+        return {
+          id: photo.id,
+          ok: true,
+          ...enhanced,
+        };
+      } catch (error) {
+        return {
+          id: photo.id,
+          ok: false,
+          error: error instanceof Error ? error.message : "Enhancement failed.",
+        };
+      }
+    }),
+  );
+
+  res.status(200).json({ results });
 });
 
 const port = Number(process.env.PORT ?? 3000);
