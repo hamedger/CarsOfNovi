@@ -26,6 +26,7 @@ app.get("/", (_req, res) => {
       health: "GET /health",
       enhance: "POST /v1/photo/enhance",
       enhanceBatch: "POST /v1/photo/enhance/batch",
+      upscale: "POST /v1/photo/upscale",
     },
   });
 });
@@ -57,6 +58,13 @@ type BatchEnhanceRequest = {
     backgroundStyle?: BackgroundStyle;
     enhanceLevel?: "standard" | "pro" | "wow";
   }>;
+};
+
+type UpscaleRequest = {
+  imageBase64: string;
+  scale: 2 | 4;
+  format?: "jpg" | "png" | "webp";
+  enhanceLevel?: "standard" | "pro" | "wow";
 };
 
 const allowedBackgrounds = new Set<BackgroundStyle>([
@@ -170,6 +178,53 @@ async function polishImage(imageBuffer: Buffer, level: "standard" | "pro" | "wow
       mozjpeg: true,
     })
     .toBuffer();
+}
+
+async function upscaleSingle(input: UpscaleRequest) {
+  const start = Date.now();
+  const imageBuffer = Buffer.from(input.imageBase64, "base64");
+  if (!imageBuffer.length) {
+    throw new Error("imageBase64 must be a valid base64 image.");
+  }
+
+  if (input.scale !== 2 && input.scale !== 4) {
+    throw new Error("scale must be 2 or 4.");
+  }
+
+  const level = input.enhanceLevel ?? "pro";
+  const format = input.format ?? "jpg";
+  const polished = await polishImage(imageBuffer, level);
+  const base = sharp(polished, { failOn: "none" }).rotate();
+  const metadata = await base.metadata();
+  const width = Math.max(1, metadata.width ?? 0);
+  const height = Math.max(1, metadata.height ?? 0);
+  const targetWidth = Math.round(width * input.scale);
+  const targetHeight = Math.round(height * input.scale);
+
+  let pipeline = base.resize(targetWidth, targetHeight, {
+    fit: "fill",
+    kernel: sharp.kernel.lanczos3,
+    withoutEnlargement: false,
+  });
+
+  if (format === "png") {
+    pipeline = pipeline.png({ compressionLevel: 9, adaptiveFiltering: true });
+  } else if (format === "webp") {
+    pipeline = pipeline.webp({ quality: 92, effort: 5 });
+  } else {
+    pipeline = pipeline.jpeg({ quality: 92, chromaSubsampling: "4:4:4", mozjpeg: true });
+  }
+
+  const outputBuffer = await pipeline.toBuffer();
+  return {
+    upscaledImageBase64: outputBuffer.toString("base64"),
+    scaleApplied: input.scale,
+    width: targetWidth,
+    height: targetHeight,
+    formatApplied: format,
+    provider: "internal" as const,
+    latencyMs: Date.now() - start,
+  };
 }
 
 async function enhanceSingle(input: EnhanceRequest) {
@@ -297,6 +352,32 @@ app.post("/v1/photo/enhance/batch", async (req, res) => {
   );
 
   res.status(200).json({ results });
+});
+
+app.post("/v1/photo/upscale", async (req, res) => {
+  const body = req.body as UpscaleRequest;
+  if (!body || typeof body.imageBase64 !== "string" || !body.imageBase64) {
+    res.status(400).json({ error: "ValidationError", message: "imageBase64 is required." });
+    return;
+  }
+  if (body.scale !== 2 && body.scale !== 4) {
+    res.status(400).json({ error: "ValidationError", message: "scale must be 2 or 4." });
+    return;
+  }
+  if (body.format && !["jpg", "png", "webp"].includes(body.format)) {
+    res.status(400).json({ error: "ValidationError", message: "format must be jpg|png|webp." });
+    return;
+  }
+
+  try {
+    const result = await upscaleSingle(body);
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(500).json({
+      error: "UpscaleFailed",
+      message: error instanceof Error ? error.message : "Upscale failed.",
+    });
+  }
 });
 
 const port = Number(process.env.PORT ?? 3000);
