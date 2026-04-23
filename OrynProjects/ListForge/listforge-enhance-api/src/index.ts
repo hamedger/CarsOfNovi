@@ -1,6 +1,7 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import sharp from "sharp";
 
 dotenv.config();
 
@@ -139,12 +140,37 @@ async function callRemoveBg(
   }
 }
 
+async function polishImage(imageBuffer: Buffer, level: "standard" | "pro" = "pro"): Promise<Buffer> {
+  const normalized = sharp(imageBuffer, { failOn: "none" }).rotate().toColorspace("srgb");
+  const base = normalized
+    .modulate({
+      brightness: level === "pro" ? 1.03 : 1.01,
+      saturation: level === "pro" ? 1.06 : 1.03,
+    })
+    .normalise()
+    .gamma(1.04);
+
+  const sharpened =
+    level === "pro"
+      ? base.sharpen({ sigma: 1.1, m1: 0.9, m2: 0.25, x1: 2.0, y2: 10.0, y3: 18.0 })
+      : base.sharpen({ sigma: 0.9, m1: 0.8, m2: 0.18, x1: 2.0, y2: 8.0, y3: 14.0 });
+
+  return sharpened
+    .jpeg({
+      quality: level === "pro" ? 90 : 86,
+      chromaSubsampling: "4:4:4",
+      mozjpeg: true,
+    })
+    .toBuffer();
+}
+
 async function enhanceSingle(input: EnhanceRequest) {
   const start = Date.now();
   const requestedStyle = input.backgroundStyle ?? "original";
   const normalizedStyle = normalizeBackgroundStyle(input.stepId, requestedStyle);
   const provider = process.env.ENHANCE_PROVIDER ?? "remove_bg";
   const timeoutMs = Number(process.env.REQUEST_TIMEOUT_MS ?? 12000);
+  const level = input.enhanceLevel ?? "pro";
 
   const originalBuffer = Buffer.from(input.imageBase64, "base64");
   if (!originalBuffer.length) {
@@ -152,8 +178,9 @@ async function enhanceSingle(input: EnhanceRequest) {
   }
 
   if (provider !== "remove_bg" || normalizedStyle === "original") {
+    const polishedOriginal = await polishImage(originalBuffer, level);
     return {
-      optimizedImageBase64: originalBuffer.toString("base64"),
+      optimizedImageBase64: polishedOriginal.toString("base64"),
       backgroundRemoved: false,
       backgroundStyleApplied: normalizedStyle,
       provider: provider === "remove_bg" ? "fallback" : "internal",
@@ -163,16 +190,18 @@ async function enhanceSingle(input: EnhanceRequest) {
 
   try {
     const enhancedBuffer = await callRemoveBg(originalBuffer, normalizedStyle, timeoutMs);
+    const polishedResult = await polishImage(enhancedBuffer, level);
     return {
-      optimizedImageBase64: enhancedBuffer.toString("base64"),
+      optimizedImageBase64: polishedResult.toString("base64"),
       backgroundRemoved: true,
       backgroundStyleApplied: normalizedStyle,
       provider: "remove_bg",
       latencyMs: Date.now() - start,
     };
   } catch {
+    const polishedFallback = await polishImage(originalBuffer, level);
     return {
-      optimizedImageBase64: originalBuffer.toString("base64"),
+      optimizedImageBase64: polishedFallback.toString("base64"),
       backgroundRemoved: false,
       backgroundStyleApplied: "original" as const,
       provider: "fallback" as const,
