@@ -53,6 +53,8 @@ type EnhanceRequest = {
   mode: EnhanceMode;
   stepId?: string;
   backgroundStyle?: BackgroundStyle;
+  /** -1 (lighter) to 1 (darker) */
+  backgroundDarkness?: number;
   enhanceLevel?: "standard" | "pro" | "wow";
   adjustments?: {
     exposure?: number;
@@ -61,6 +63,9 @@ type EnhanceRequest = {
     sharpen?: number;
     denoise?: number;
   };
+  logoBase64?: string;
+  logoOpacity?: number;
+  logoPosition?: "top_left" | "top_right" | "bottom_left" | "bottom_right" | "center";
 };
 
 type BatchEnhanceRequest = {
@@ -79,6 +84,7 @@ type UpscaleRequest = {
   scale: 2 | 4;
   format?: "jpg" | "png" | "webp";
   enhanceLevel?: "standard" | "pro" | "wow";
+  backgroundDarkness?: number;
   adjustments?: {
     exposure?: number;
     contrast?: number;
@@ -93,6 +99,7 @@ type EnhanceUpscaleRequest = {
   mode: EnhanceMode;
   stepId?: string;
   backgroundStyle?: BackgroundStyle;
+  backgroundDarkness?: number;
   enhanceLevel?: "standard" | "pro" | "wow";
   scale: 2 | 4;
   format?: "jpg" | "png" | "webp";
@@ -103,6 +110,9 @@ type EnhanceUpscaleRequest = {
     sharpen?: number;
     denoise?: number;
   };
+  logoBase64?: string;
+  logoOpacity?: number;
+  logoPosition?: "top_left" | "top_right" | "bottom_left" | "bottom_right" | "center";
 };
 
 const allowedBackgrounds = new Set<BackgroundStyle>([
@@ -140,38 +150,63 @@ function normalizeBackgroundStyle(
   return picked;
 }
 
-function backgroundColorForStyle(style: BackgroundStyle): string | null {
+function applyDarknessToHex(hex: string, darkness: number): string {
+  const d = Math.max(-1, Math.min(1, darkness));
+  const ch = (i: number) => parseInt(hex.slice(i, i + 2), 16);
+  const channels = [ch(0), ch(2), ch(4)].map((v) => {
+    if (d >= 0) {
+      return Math.round(v * (1 - d * 0.75));
+    }
+    return Math.round(v + (255 - v) * (-d * 0.55));
+  });
+  return channels.map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0")).join("");
+}
+
+function backgroundColorForStyle(style: BackgroundStyle, darkness = 0): string | null {
+  let baseHex: string | null = null;
   switch (style) {
     case "studio_white":
-      return "ffffff";
+      baseHex = "ffffff";
+      break;
     case "studio_gray":
-      return "d7d7d7";
+      baseHex = "bcbfc6";
+      break;
     case "showroom":
-      return "eceff3";
+      baseHex = "d7dee8";
+      break;
     case "outdoor_soft":
-      return "f3f7ff";
+      baseHex = "d9e6ff";
+      break;
     case "blur_subtle":
-      return "f4f4f4";
+      baseHex = "dfe2e8";
+      break;
     case "clean_white":
-      return "fdfdfd";
+      baseHex = "fdfdfd";
+      break;
     case "soft_gradient":
-      return "e8edf6";
+      baseHex = "cfd8ea";
+      break;
     case "dark_studio":
-      return "2a2d33";
+      baseHex = "2a2d33";
+      break;
     case "neutral_lifestyle":
-      return "f1efe9";
+      baseHex = "d8d0c2";
+      break;
     case "light_texture":
-      return "ece8df";
+      baseHex = "d7d0c3";
+      break;
     case "original":
     case "auto_best":
     default:
       return null;
   }
+  return applyDarknessToHex(baseHex, darkness);
 }
 
 async function callRemoveBg(
   imageBuffer: Buffer,
   backgroundStyle: BackgroundStyle,
+  backgroundDarkness: number,
   timeoutMs: number,
 ): Promise<Buffer> {
   const apiKey = process.env.REMOVE_BG_API_KEY;
@@ -185,7 +220,7 @@ async function callRemoveBg(
   formData.append("size", "auto");
   formData.append("format", "jpg");
 
-  const bgColor = backgroundColorForStyle(backgroundStyle);
+  const bgColor = backgroundColorForStyle(backgroundStyle, backgroundDarkness);
   if (bgColor) {
     formData.append("bg_color", bgColor);
   }
@@ -248,8 +283,11 @@ async function polishImage(
 
   const sharpened =
     isWow
-      ? base
-          .median(denoiseAdj > 0 ? 1 : 0)
+      ? (
+          denoiseAdj > 0
+            ? base.median(1)
+            : base
+        )
           .sharpen({
             sigma: Math.max(0.7, 1.45 + sharpenAdj * 0.6),
             m1: 1.05,
@@ -333,6 +371,62 @@ async function upscaleSingle(input: UpscaleRequest) {
   };
 }
 
+async function applyLogoOverlay(
+  baseBuffer: Buffer,
+  logoBase64: string,
+  logoOpacity = 0.2,
+  logoPosition: "top_left" | "top_right" | "bottom_left" | "bottom_right" | "center" = "bottom_right",
+): Promise<Buffer> {
+  const base = sharp(baseBuffer, { failOn: "none" }).rotate();
+  const meta = await base.metadata();
+  const width = meta.width ?? 0;
+  const height = meta.height ?? 0;
+  if (width <= 0 || height <= 0) return baseBuffer;
+
+  const logoBuffer = Buffer.from(logoBase64, "base64");
+  if (!logoBuffer.length) return baseBuffer;
+
+  const targetLogoWidth = Math.max(80, Math.round(width * 0.18));
+  const logo = await sharp(logoBuffer, { failOn: "none" })
+    .resize({ width: targetLogoWidth, fit: "inside", withoutEnlargement: true })
+    .png()
+    .ensureAlpha()
+    .toBuffer();
+
+  const logoMeta = await sharp(logo).metadata();
+  const lw = logoMeta.width ?? targetLogoWidth;
+  const lh = logoMeta.height ?? targetLogoWidth;
+  const margin = Math.max(12, Math.round(width * 0.02));
+  const safeOpacity = Math.max(0.05, Math.min(0.85, logoOpacity));
+
+  let left = margin;
+  let top = margin;
+  if (logoPosition === "top_right") {
+    left = Math.max(margin, width - lw - margin);
+    top = margin;
+  } else if (logoPosition === "bottom_left") {
+    left = margin;
+    top = Math.max(margin, height - lh - margin);
+  } else if (logoPosition === "bottom_right") {
+    left = Math.max(margin, width - lw - margin);
+    top = Math.max(margin, height - lh - margin);
+  } else if (logoPosition === "center") {
+    left = Math.max(margin, Math.round((width - lw) / 2));
+    top = Math.max(margin, Math.round((height - lh) / 2));
+  }
+
+  const svgOverlay = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${lw}" height="${lh}"><image href="data:image/png;base64,${logo.toString(
+      "base64",
+    )}" width="${lw}" height="${lh}" opacity="${safeOpacity}"/></svg>`,
+  );
+
+  return base
+    .composite([{ input: svgOverlay, left, top, blend: "over" }])
+    .jpeg({ quality: 92, chromaSubsampling: "4:4:4", mozjpeg: true })
+    .toBuffer();
+}
+
 async function enhanceSingle(input: EnhanceRequest) {
   const start = Date.now();
   const requestedStyle = input.backgroundStyle ?? "original";
@@ -340,6 +434,7 @@ async function enhanceSingle(input: EnhanceRequest) {
   const provider = process.env.ENHANCE_PROVIDER ?? "remove_bg";
   const timeoutMs = Number(process.env.REQUEST_TIMEOUT_MS ?? 12000);
   const level = input.enhanceLevel ?? "pro";
+  const backgroundDarkness = Math.max(-1, Math.min(1, input.backgroundDarkness ?? 0));
 
   const originalBuffer = Buffer.from(input.imageBase64, "base64");
   if (!originalBuffer.length) {
@@ -358,8 +453,16 @@ async function enhanceSingle(input: EnhanceRequest) {
   }
 
   try {
-    const enhancedBuffer = await callRemoveBg(originalBuffer, normalizedStyle, timeoutMs);
-    const polishedResult = await polishImage(enhancedBuffer, level, input.adjustments);
+    const enhancedBuffer = await callRemoveBg(originalBuffer, normalizedStyle, backgroundDarkness, timeoutMs);
+    let polishedResult = await polishImage(enhancedBuffer, level, input.adjustments);
+    if (input.logoBase64) {
+      polishedResult = await applyLogoOverlay(
+        polishedResult,
+        input.logoBase64,
+        input.logoOpacity ?? 0.2,
+        input.logoPosition ?? "bottom_right",
+      );
+    }
     return {
       optimizedImageBase64: polishedResult.toString("base64"),
       backgroundRemoved: true,
@@ -517,8 +620,12 @@ app.post("/v1/photo/enhance-upscale", async (req, res) => {
       mode: body.mode,
       stepId: body.stepId,
       backgroundStyle,
+      backgroundDarkness: body.backgroundDarkness ?? 0,
       enhanceLevel: body.enhanceLevel ?? "pro",
       adjustments: body.adjustments,
+      logoBase64: body.logoBase64,
+      logoOpacity: body.logoOpacity,
+      logoPosition: body.logoPosition,
     });
 
     const upscaled = await upscaleSingle({
