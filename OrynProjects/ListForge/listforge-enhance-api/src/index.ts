@@ -27,17 +27,24 @@ app.get("/", (_req, res) => {
       enhance: "POST /v1/photo/enhance",
       enhanceBatch: "POST /v1/photo/enhance/batch",
       upscale: "POST /v1/photo/upscale",
+      enhanceUpscale: "POST /v1/photo/enhance-upscale",
     },
   });
 });
 
 type BackgroundStyle =
   | "original"
+  | "auto_best"
   | "studio_white"
   | "studio_gray"
   | "showroom"
   | "outdoor_soft"
-  | "blur_subtle";
+  | "blur_subtle"
+  | "clean_white"
+  | "soft_gradient"
+  | "dark_studio"
+  | "neutral_lifestyle"
+  | "light_texture";
 
 type EnhanceMode = "auto" | "electronics" | "general";
 
@@ -67,22 +74,49 @@ type UpscaleRequest = {
   enhanceLevel?: "standard" | "pro" | "wow";
 };
 
+type EnhanceUpscaleRequest = {
+  imageBase64: string;
+  mode: EnhanceMode;
+  stepId?: string;
+  backgroundStyle?: BackgroundStyle;
+  enhanceLevel?: "standard" | "pro" | "wow";
+  scale: 2 | 4;
+  format?: "jpg" | "png" | "webp";
+};
+
 const allowedBackgrounds = new Set<BackgroundStyle>([
   "original",
+  "auto_best",
   "studio_white",
   "studio_gray",
   "showroom",
   "outdoor_soft",
   "blur_subtle",
+  "clean_white",
+  "soft_gradient",
+  "dark_studio",
+  "neutral_lifestyle",
+  "light_texture",
 ]);
 
 function isExteriorStep(stepId?: string) {
   return stepId === "front_3_4" || stepId === "side" || stepId === "rear_3_4";
 }
 
-function normalizeBackgroundStyle(stepId: string | undefined, requested: BackgroundStyle): BackgroundStyle {
-  if (!isExteriorStep(stepId)) return "original";
-  return requested;
+function selectAutoBestStyle(mode: EnhanceMode): BackgroundStyle {
+  if (mode === "electronics") return "clean_white";
+  if (mode === "general") return "neutral_lifestyle";
+  return "studio_white";
+}
+
+function normalizeBackgroundStyle(
+  mode: EnhanceMode,
+  stepId: string | undefined,
+  requested: BackgroundStyle,
+): BackgroundStyle {
+  const picked = requested === "auto_best" ? selectAutoBestStyle(mode) : requested;
+  if (mode === "auto" && !isExteriorStep(stepId)) return "original";
+  return picked;
 }
 
 function backgroundColorForStyle(style: BackgroundStyle): string | null {
@@ -97,7 +131,18 @@ function backgroundColorForStyle(style: BackgroundStyle): string | null {
       return "f3f7ff";
     case "blur_subtle":
       return "f4f4f4";
+    case "clean_white":
+      return "fdfdfd";
+    case "soft_gradient":
+      return "e8edf6";
+    case "dark_studio":
+      return "2a2d33";
+    case "neutral_lifestyle":
+      return "f1efe9";
+    case "light_texture":
+      return "ece8df";
     case "original":
+    case "auto_best":
     default:
       return null;
   }
@@ -230,7 +275,7 @@ async function upscaleSingle(input: UpscaleRequest) {
 async function enhanceSingle(input: EnhanceRequest) {
   const start = Date.now();
   const requestedStyle = input.backgroundStyle ?? "original";
-  const normalizedStyle = normalizeBackgroundStyle(input.stepId, requestedStyle);
+  const normalizedStyle = normalizeBackgroundStyle(input.mode, input.stepId, requestedStyle);
   const provider = process.env.ENHANCE_PROVIDER ?? "remove_bg";
   const timeoutMs = Number(process.env.REQUEST_TIMEOUT_MS ?? 12000);
   const level = input.enhanceLevel ?? "pro";
@@ -376,6 +421,71 @@ app.post("/v1/photo/upscale", async (req, res) => {
     res.status(500).json({
       error: "UpscaleFailed",
       message: error instanceof Error ? error.message : "Upscale failed.",
+    });
+  }
+});
+
+app.post("/v1/photo/enhance-upscale", async (req, res) => {
+  const body = req.body as EnhanceUpscaleRequest;
+  if (!body || typeof body.imageBase64 !== "string" || !body.imageBase64) {
+    res.status(400).json({ error: "ValidationError", message: "imageBase64 is required." });
+    return;
+  }
+  if (!body.mode || !["auto", "electronics", "general"].includes(body.mode)) {
+    res.status(400).json({ error: "ValidationError", message: "mode must be auto|electronics|general." });
+    return;
+  }
+  const backgroundStyle = body.backgroundStyle ?? "original";
+  if (!allowedBackgrounds.has(backgroundStyle)) {
+    res.status(400).json({ error: "ValidationError", message: "backgroundStyle is invalid." });
+    return;
+  }
+  if (body.scale !== 2 && body.scale !== 4) {
+    res.status(400).json({ error: "ValidationError", message: "scale must be 2 or 4." });
+    return;
+  }
+  if (body.format && !["jpg", "png", "webp"].includes(body.format)) {
+    res.status(400).json({ error: "ValidationError", message: "format must be jpg|png|webp." });
+    return;
+  }
+
+  try {
+    const start = Date.now();
+    const enhanced = await enhanceSingle({
+      imageBase64: body.imageBase64,
+      mode: body.mode,
+      stepId: body.stepId,
+      backgroundStyle,
+      enhanceLevel: body.enhanceLevel ?? "pro",
+    });
+
+    const upscaled = await upscaleSingle({
+      imageBase64: enhanced.optimizedImageBase64,
+      scale: body.scale,
+      format: body.format ?? "jpg",
+      enhanceLevel: body.enhanceLevel ?? "pro",
+    });
+
+    res.status(200).json({
+      optimizedImageBase64: upscaled.upscaledImageBase64,
+      backgroundRemoved: enhanced.backgroundRemoved,
+      backgroundStyleApplied: enhanced.backgroundStyleApplied,
+      enhanceProvider: enhanced.provider,
+      upscaleProvider: upscaled.provider,
+      scaleApplied: upscaled.scaleApplied,
+      width: upscaled.width,
+      height: upscaled.height,
+      formatApplied: upscaled.formatApplied,
+      latencyMs: Date.now() - start,
+      timing: {
+        enhanceLatencyMs: enhanced.latencyMs ?? null,
+        upscaleLatencyMs: upscaled.latencyMs ?? null,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: "EnhanceUpscaleFailed",
+      message: error instanceof Error ? error.message : "Enhance+upscale failed.",
     });
   }
 });
