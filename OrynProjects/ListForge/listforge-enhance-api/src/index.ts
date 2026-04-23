@@ -54,6 +54,13 @@ type EnhanceRequest = {
   stepId?: string;
   backgroundStyle?: BackgroundStyle;
   enhanceLevel?: "standard" | "pro" | "wow";
+  adjustments?: {
+    exposure?: number;
+    contrast?: number;
+    saturation?: number;
+    sharpen?: number;
+    denoise?: number;
+  };
 };
 
 type BatchEnhanceRequest = {
@@ -72,6 +79,13 @@ type UpscaleRequest = {
   scale: 2 | 4;
   format?: "jpg" | "png" | "webp";
   enhanceLevel?: "standard" | "pro" | "wow";
+  adjustments?: {
+    exposure?: number;
+    contrast?: number;
+    saturation?: number;
+    sharpen?: number;
+    denoise?: number;
+  };
 };
 
 type EnhanceUpscaleRequest = {
@@ -82,6 +96,13 @@ type EnhanceUpscaleRequest = {
   enhanceLevel?: "standard" | "pro" | "wow";
   scale: 2 | 4;
   format?: "jpg" | "png" | "webp";
+  adjustments?: {
+    exposure?: number;
+    contrast?: number;
+    saturation?: number;
+    sharpen?: number;
+    denoise?: number;
+  };
 };
 
 const allowedBackgrounds = new Set<BackgroundStyle>([
@@ -193,28 +214,68 @@ async function callRemoveBg(
   }
 }
 
-async function polishImage(imageBuffer: Buffer, level: "standard" | "pro" | "wow" = "pro"): Promise<Buffer> {
+async function polishImage(
+  imageBuffer: Buffer,
+  level: "standard" | "pro" | "wow" = "pro",
+  adjustments?: {
+    exposure?: number;
+    contrast?: number;
+    saturation?: number;
+    sharpen?: number;
+    denoise?: number;
+  },
+): Promise<Buffer> {
+  const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+  const exposureAdj = clamp(adjustments?.exposure ?? 0, -1, 1);
+  const contrastAdj = clamp(adjustments?.contrast ?? 0, -1, 1);
+  const saturationAdj = clamp(adjustments?.saturation ?? 0, -1, 1);
+  const sharpenAdj = clamp(adjustments?.sharpen ?? 0, -1, 1);
+  const denoiseAdj = clamp(adjustments?.denoise ?? 0, -1, 1);
+
   const normalized = sharp(imageBuffer, { failOn: "none" }).rotate().toColorspace("srgb");
   const isWow = level === "wow";
   const isPro = level === "pro";
+  const baseBrightness = isWow ? 1.06 : isPro ? 1.03 : 1.01;
+  const baseSaturation = isWow ? 1.14 : isPro ? 1.06 : 1.03;
   const base = normalized
     .modulate({
-      brightness: isWow ? 1.06 : isPro ? 1.03 : 1.01,
-      saturation: isWow ? 1.14 : isPro ? 1.06 : 1.03,
+      brightness: baseBrightness + exposureAdj * 0.18,
+      saturation: baseSaturation + saturationAdj * 0.25,
     })
-    .linear(isWow ? 1.08 : 1.03, isWow ? -(8 / 255) : -(3 / 255))
+    .linear((isWow ? 1.08 : 1.03) + contrastAdj * 0.2, (isWow ? -(8 / 255) : -(3 / 255)) - exposureAdj * (8 / 255))
     .normalise({ lower: isWow ? 2 : 4, upper: isWow ? 98 : 96 })
-    .gamma(isWow ? 1.08 : 1.04);
+    .gamma((isWow ? 1.08 : 1.04) + exposureAdj * 0.08);
 
   const sharpened =
     isWow
       ? base
-          .median(1)
-          .sharpen({ sigma: 1.45, m1: 1.05, m2: 0.32, x1: 2.2, y2: 12.0, y3: 20.0 })
+          .median(denoiseAdj > 0 ? 1 : 0)
+          .sharpen({
+            sigma: Math.max(0.7, 1.45 + sharpenAdj * 0.6),
+            m1: 1.05,
+            m2: 0.32,
+            x1: 2.2,
+            y2: 12.0,
+            y3: 20.0,
+          })
           .modulate({ saturation: 1.03 })
       : isPro
-      ? base.sharpen({ sigma: 1.1, m1: 0.9, m2: 0.25, x1: 2.0, y2: 10.0, y3: 18.0 })
-      : base.sharpen({ sigma: 0.9, m1: 0.8, m2: 0.18, x1: 2.0, y2: 8.0, y3: 14.0 });
+      ? base.sharpen({
+          sigma: Math.max(0.6, 1.1 + sharpenAdj * 0.6),
+          m1: 0.9,
+          m2: 0.25,
+          x1: 2.0,
+          y2: 10.0,
+          y3: 18.0,
+        })
+      : base.sharpen({
+          sigma: Math.max(0.5, 0.9 + sharpenAdj * 0.6),
+          m1: 0.8,
+          m2: 0.18,
+          x1: 2.0,
+          y2: 8.0,
+          y3: 14.0,
+        });
 
   return sharpened
     .jpeg({
@@ -238,7 +299,7 @@ async function upscaleSingle(input: UpscaleRequest) {
 
   const level = input.enhanceLevel ?? "pro";
   const format = input.format ?? "jpg";
-  const polished = await polishImage(imageBuffer, level);
+  const polished = await polishImage(imageBuffer, level, input.adjustments);
   const base = sharp(polished, { failOn: "none" }).rotate();
   const metadata = await base.metadata();
   const width = Math.max(1, metadata.width ?? 0);
@@ -286,7 +347,7 @@ async function enhanceSingle(input: EnhanceRequest) {
   }
 
   if (provider !== "remove_bg" || normalizedStyle === "original") {
-    const polishedOriginal = await polishImage(originalBuffer, level);
+    const polishedOriginal = await polishImage(originalBuffer, level, input.adjustments);
     return {
       optimizedImageBase64: polishedOriginal.toString("base64"),
       backgroundRemoved: false,
@@ -298,7 +359,7 @@ async function enhanceSingle(input: EnhanceRequest) {
 
   try {
     const enhancedBuffer = await callRemoveBg(originalBuffer, normalizedStyle, timeoutMs);
-    const polishedResult = await polishImage(enhancedBuffer, level);
+    const polishedResult = await polishImage(enhancedBuffer, level, input.adjustments);
     return {
       optimizedImageBase64: polishedResult.toString("base64"),
       backgroundRemoved: true,
@@ -307,7 +368,7 @@ async function enhanceSingle(input: EnhanceRequest) {
       latencyMs: Date.now() - start,
     };
   } catch {
-    const polishedFallback = await polishImage(originalBuffer, level);
+    const polishedFallback = await polishImage(originalBuffer, level, input.adjustments);
     return {
       optimizedImageBase64: polishedFallback.toString("base64"),
       backgroundRemoved: false,
@@ -457,6 +518,7 @@ app.post("/v1/photo/enhance-upscale", async (req, res) => {
       stepId: body.stepId,
       backgroundStyle,
       enhanceLevel: body.enhanceLevel ?? "pro",
+      adjustments: body.adjustments,
     });
 
     const upscaled = await upscaleSingle({
@@ -464,6 +526,7 @@ app.post("/v1/photo/enhance-upscale", async (req, res) => {
       scale: body.scale,
       format: body.format ?? "jpg",
       enhanceLevel: body.enhanceLevel ?? "pro",
+      adjustments: body.adjustments,
     });
 
     res.status(200).json({
