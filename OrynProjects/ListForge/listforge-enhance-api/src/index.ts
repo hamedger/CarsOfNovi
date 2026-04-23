@@ -45,7 +45,7 @@ type EnhanceRequest = {
   mode: EnhanceMode;
   stepId?: string;
   backgroundStyle?: BackgroundStyle;
-  enhanceLevel?: "standard" | "pro";
+  enhanceLevel?: "standard" | "pro" | "wow";
 };
 
 type BatchEnhanceRequest = {
@@ -55,7 +55,7 @@ type BatchEnhanceRequest = {
     mode: EnhanceMode;
     stepId?: string;
     backgroundStyle?: BackgroundStyle;
-    enhanceLevel?: "standard" | "pro";
+    enhanceLevel?: "standard" | "pro" | "wow";
   }>;
 };
 
@@ -140,24 +140,32 @@ async function callRemoveBg(
   }
 }
 
-async function polishImage(imageBuffer: Buffer, level: "standard" | "pro" = "pro"): Promise<Buffer> {
+async function polishImage(imageBuffer: Buffer, level: "standard" | "pro" | "wow" = "pro"): Promise<Buffer> {
   const normalized = sharp(imageBuffer, { failOn: "none" }).rotate().toColorspace("srgb");
+  const isWow = level === "wow";
+  const isPro = level === "pro";
   const base = normalized
     .modulate({
-      brightness: level === "pro" ? 1.03 : 1.01,
-      saturation: level === "pro" ? 1.06 : 1.03,
+      brightness: isWow ? 1.06 : isPro ? 1.03 : 1.01,
+      saturation: isWow ? 1.14 : isPro ? 1.06 : 1.03,
     })
-    .normalise()
-    .gamma(1.04);
+    .linear(isWow ? 1.08 : 1.03, isWow ? -(8 / 255) : -(3 / 255))
+    .normalise({ lower: isWow ? 2 : 4, upper: isWow ? 98 : 96 })
+    .gamma(isWow ? 1.08 : 1.04);
 
   const sharpened =
-    level === "pro"
+    isWow
+      ? base
+          .median(1)
+          .sharpen({ sigma: 1.45, m1: 1.05, m2: 0.32, x1: 2.2, y2: 12.0, y3: 20.0 })
+          .modulate({ saturation: 1.03 })
+      : isPro
       ? base.sharpen({ sigma: 1.1, m1: 0.9, m2: 0.25, x1: 2.0, y2: 10.0, y3: 18.0 })
       : base.sharpen({ sigma: 0.9, m1: 0.8, m2: 0.18, x1: 2.0, y2: 8.0, y3: 14.0 });
 
   return sharpened
     .jpeg({
-      quality: level === "pro" ? 90 : 86,
+      quality: isWow ? 92 : isPro ? 90 : 86,
       chromaSubsampling: "4:4:4",
       mozjpeg: true,
     })
