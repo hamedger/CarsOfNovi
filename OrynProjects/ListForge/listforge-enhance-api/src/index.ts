@@ -1,6 +1,8 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { getFirestore, type Firestore, FieldValue } from "firebase-admin/firestore";
 import sharp from "sharp";
 
 dotenv.config();
@@ -49,6 +51,7 @@ type BackgroundStyle =
 
 type EnhanceMode = "auto" | "electronics" | "general";
 type BillingModeMultipliers = Record<EnhanceMode, number>;
+type LedgerEntryType = "topup" | "consume" | "auto_refill";
 
 type CreditPack = {
   id: string;
@@ -56,6 +59,13 @@ type CreditPack = {
   credits: number;
   priceUsd: number;
   popular?: boolean;
+};
+
+type WalletState = {
+  credits_balance: number;
+  auto_refill_enabled: boolean;
+  auto_refill_pack_id: string | null;
+  auto_refill_threshold: number;
 };
 
 type EnhanceRequest = {
@@ -184,6 +194,81 @@ function billingConfig() {
     defaultAutoRefillThreshold: readNumberEnv("DEFAULT_AUTO_REFILL_THRESHOLD", 20),
     defaultAutoRefillPackId: packs.some((p) => p.id === defaultAutoRefillPackId) ? defaultAutoRefillPackId : fallbackPack,
   };
+}
+
+let firestoreClient: Firestore | null = null;
+
+function ensureFirestore() {
+  if (firestoreClient) return firestoreClient;
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (serviceAccountJson) {
+    const creds = JSON.parse(serviceAccountJson) as {
+      project_id: string;
+      client_email: string;
+      private_key: string;
+    };
+    if (!getApps().length) {
+      initializeApp({
+        credential: cert({
+          projectId: creds.project_id,
+          clientEmail: creds.client_email,
+          privateKey: creds.private_key.replace(/\\n/g, "\n"),
+        }),
+      });
+    }
+    firestoreClient = getFirestore();
+    return firestoreClient;
+  }
+
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  if (!projectId || !clientEmail || !privateKey) {
+    throw new Error("Firestore is not configured. Set FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY.");
+  }
+  if (!getApps().length) {
+    initializeApp({
+      credential: cert({
+        projectId,
+        clientEmail,
+        privateKey: privateKey.replace(/\\n/g, "\n"),
+      }),
+    });
+  }
+  firestoreClient = getFirestore();
+  return firestoreClient;
+}
+
+function defaultWallet(config: ReturnType<typeof billingConfig>): WalletState {
+  return {
+    credits_balance: readNumberEnv("DEFAULT_CREDITS_BALANCE", 40),
+    auto_refill_enabled: false,
+    auto_refill_pack_id: config.defaultAutoRefillPackId,
+    auto_refill_threshold: config.defaultAutoRefillThreshold,
+  };
+}
+
+function userDoc(db: Firestore, userId: string) {
+  return db.collection("users").doc(userId);
+}
+
+function ledgerDoc(db: Firestore, userId: string, idempotencyKey: string) {
+  return db.collection("users").doc(userId).collection("credit_ledger").doc(idempotencyKey);
+}
+
+function modeCost(mode: EnhanceMode, multipliers: BillingModeMultipliers) {
+  return multipliers[mode] ?? 1;
+}
+
+function authorizeBillingRequest(req: express.Request, res: express.Response) {
+  const expected = process.env.BILLING_API_KEY;
+  if (!expected) return true;
+  const provided = req.header("x-billing-api-key") ?? "";
+  if (provided !== expected) {
+    res.status(401).json({ error: "Unauthorized", message: "Missing or invalid billing API key." });
+    return false;
+  }
+  return true;
 }
 
 function isExteriorStep(stepId?: string) {
@@ -651,6 +736,236 @@ app.get("/v1/photo/enhance", (_req, res) => {
 
 app.get("/v1/billing/config", (_req, res) => {
   res.status(200).json(billingConfig());
+});
+
+app.get("/v1/billing/wallet/:userId", async (req, res) => {
+  if (!authorizeBillingRequest(req, res)) return;
+  const userId = req.params.userId;
+  if (!userId) {
+    res.status(400).json({ error: "ValidationError", message: "userId is required." });
+    return;
+  }
+  try {
+    const db = ensureFirestore();
+    const config = billingConfig();
+    const ref = userDoc(db, userId);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      const wallet = defaultWallet(config);
+      await ref.set(
+        {
+          ...wallet,
+          updated_at: new Date().toISOString(),
+          updated_server_ts: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      res.status(200).json({ userId, ...wallet });
+      return;
+    }
+    const data = snap.data() ?? {};
+    const wallet: WalletState = {
+      credits_balance: typeof data.credits_balance === "number" ? data.credits_balance : defaultWallet(config).credits_balance,
+      auto_refill_enabled: Boolean(data.auto_refill_enabled),
+      auto_refill_pack_id: typeof data.auto_refill_pack_id === "string" ? data.auto_refill_pack_id : config.defaultAutoRefillPackId,
+      auto_refill_threshold:
+        typeof data.auto_refill_threshold === "number" ? data.auto_refill_threshold : config.defaultAutoRefillThreshold,
+    };
+    res.status(200).json({ userId, ...wallet });
+  } catch (error) {
+    res.status(500).json({
+      error: "WalletFetchFailed",
+      message: error instanceof Error ? error.message : "Failed to read wallet.",
+    });
+  }
+});
+
+app.post("/v1/billing/topup", async (req, res) => {
+  if (!authorizeBillingRequest(req, res)) return;
+  const body = req.body as {
+    userId?: string;
+    packId?: string;
+    idempotencyKey?: string;
+    paymentRef?: string;
+  };
+  if (!body?.userId || !body.packId || !body.idempotencyKey) {
+    res.status(400).json({ error: "ValidationError", message: "userId, packId, and idempotencyKey are required." });
+    return;
+  }
+  try {
+    const db = ensureFirestore();
+    const config = billingConfig();
+    const pack = config.topupPacks.find((p) => p.id === body.packId);
+    if (!pack) {
+      res.status(400).json({ error: "ValidationError", message: "Invalid packId." });
+      return;
+    }
+
+    const result = await db.runTransaction(async (tx) => {
+      const uRef = userDoc(db, body.userId!);
+      const lRef = ledgerDoc(db, body.userId!, body.idempotencyKey!);
+      const [userSnap, ledgerSnap] = await Promise.all([tx.get(uRef), tx.get(lRef)]);
+      if (ledgerSnap.exists) {
+        return ledgerSnap.data();
+      }
+
+      const current = userSnap.data() ?? defaultWallet(config);
+      const currentBalance = typeof current.credits_balance === "number" ? current.credits_balance : defaultWallet(config).credits_balance;
+      const nextBalance = currentBalance + pack.credits;
+      const nowIso = new Date().toISOString();
+
+      tx.set(
+        uRef,
+        {
+          credits_balance: Number(nextBalance.toFixed(2)),
+          updated_at: nowIso,
+          updated_server_ts: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      tx.set(lRef, {
+        type: "topup" as LedgerEntryType,
+        userId: body.userId,
+        packId: pack.id,
+        creditsDelta: pack.credits,
+        amountUsd: pack.priceUsd,
+        paymentRef: body.paymentRef ?? null,
+        idempotencyKey: body.idempotencyKey,
+        created_at: nowIso,
+        created_server_ts: FieldValue.serverTimestamp(),
+      });
+      return {
+        type: "topup",
+        creditsDelta: pack.credits,
+        balanceAfter: Number(nextBalance.toFixed(2)),
+      };
+    });
+    res.status(200).json({ ok: true, result });
+  } catch (error) {
+    res.status(500).json({
+      error: "TopupFailed",
+      message: error instanceof Error ? error.message : "Top-up failed.",
+    });
+  }
+});
+
+app.post("/v1/billing/consume", async (req, res) => {
+  if (!authorizeBillingRequest(req, res)) return;
+  const body = req.body as {
+    userId?: string;
+    mode?: EnhanceMode;
+    idempotencyKey?: string;
+    jobCount?: number;
+    jobRef?: string;
+  };
+  if (!body?.userId || !body.mode || !body.idempotencyKey) {
+    res.status(400).json({ error: "ValidationError", message: "userId, mode, and idempotencyKey are required." });
+    return;
+  }
+  if (!["auto", "electronics", "general"].includes(body.mode)) {
+    res.status(400).json({ error: "ValidationError", message: "mode must be auto|electronics|general." });
+    return;
+  }
+  const jobCount = Number.isFinite(body.jobCount) && (body.jobCount ?? 0) > 0 ? Number(body.jobCount) : 1;
+  try {
+    const db = ensureFirestore();
+    const config = billingConfig();
+    const perJobCost = modeCost(body.mode, config.modeMultipliers);
+    const consumeCost = Number((jobCount * perJobCost).toFixed(2));
+
+    const result = await db.runTransaction(async (tx) => {
+      const uRef = userDoc(db, body.userId!);
+      const lRef = ledgerDoc(db, body.userId!, body.idempotencyKey!);
+      const [userSnap, ledgerSnap] = await Promise.all([tx.get(uRef), tx.get(lRef)]);
+      if (ledgerSnap.exists) {
+        return ledgerSnap.data();
+      }
+
+      const defaults = defaultWallet(config);
+      const current = userSnap.data() ?? defaults;
+      let balance = typeof current.credits_balance === "number" ? current.credits_balance : defaults.credits_balance;
+      const autoRefillEnabled = Boolean(current.auto_refill_enabled);
+      const threshold =
+        typeof current.auto_refill_threshold === "number" ? current.auto_refill_threshold : defaults.auto_refill_threshold;
+      const refillPackId =
+        typeof current.auto_refill_pack_id === "string" ? current.auto_refill_pack_id : defaults.auto_refill_pack_id;
+      const refillPack = config.topupPacks.find((p) => p.id === refillPackId) ?? config.topupPacks[0];
+
+      let refillApplied = false;
+      let refillCredits = 0;
+      if (balance < consumeCost && autoRefillEnabled && refillPack) {
+        balance += refillPack.credits;
+        refillApplied = true;
+        refillCredits = refillPack.credits;
+        const refillLedgerId = `${body.idempotencyKey}:auto_refill`;
+        tx.set(ledgerDoc(db, body.userId!, refillLedgerId), {
+          type: "auto_refill" as LedgerEntryType,
+          userId: body.userId,
+          packId: refillPack.id,
+          creditsDelta: refillPack.credits,
+          amountUsd: refillPack.priceUsd,
+          triggerIdempotencyKey: body.idempotencyKey,
+          created_at: new Date().toISOString(),
+          created_server_ts: FieldValue.serverTimestamp(),
+        });
+      }
+
+      if (balance < consumeCost) {
+        throw new Error("INSUFFICIENT_CREDITS");
+      }
+
+      balance = Number((balance - consumeCost).toFixed(2));
+      const nowIso = new Date().toISOString();
+
+      tx.set(
+        uRef,
+        {
+          credits_balance: balance,
+          auto_refill_enabled: autoRefillEnabled,
+          auto_refill_pack_id: refillPackId,
+          auto_refill_threshold: threshold,
+          updated_at: nowIso,
+          updated_server_ts: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      tx.set(lRef, {
+        type: "consume" as LedgerEntryType,
+        userId: body.userId,
+        mode: body.mode,
+        jobCount,
+        costPerJob: perJobCost,
+        creditsDelta: -consumeCost,
+        balanceAfter: balance,
+        idempotencyKey: body.idempotencyKey,
+        jobRef: body.jobRef ?? null,
+        autoRefillApplied: refillApplied,
+        autoRefillCredits: refillCredits,
+        created_at: nowIso,
+        created_server_ts: FieldValue.serverTimestamp(),
+      });
+      return {
+        type: "consume",
+        mode: body.mode,
+        jobCount,
+        creditsCharged: consumeCost,
+        balanceAfter: balance,
+        autoRefillApplied: refillApplied,
+        autoRefillCredits: refillCredits,
+      };
+    });
+    res.status(200).json({ ok: true, result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Consumption failed.";
+    if (message === "INSUFFICIENT_CREDITS") {
+      res.status(402).json({ error: "InsufficientCredits", message: "Not enough credits to process this job." });
+      return;
+    }
+    res.status(500).json({
+      error: "ConsumeFailed",
+      message,
+    });
+  }
 });
 
 app.post("/v1/photo/enhance/batch", async (req, res) => {

@@ -6,6 +6,9 @@ Minimal Render-ready Node/TypeScript API service for ListForge image enhancement
 
 - `GET /health` - health check for Render deploy validation.
 - `GET /v1/billing/config` - app billing and credit pack configuration.
+- `GET /v1/billing/wallet/:userId` - wallet snapshot (balance + refill settings).
+- `POST /v1/billing/topup` - add credits using idempotency key.
+- `POST /v1/billing/consume` - consume credits per mode, with optional auto-refill.
 - `POST /v1/photo/enhance` - photo enhancement.
 - `POST /v1/photo/enhance/batch` - batch photo enhancement.
 - `POST /v1/photo/upscale` - upscaling.
@@ -33,6 +36,12 @@ npm start
 - `BILLING_TOPUP_PACKS_JSON` (optional JSON array of packs)
 - `DEFAULT_AUTO_REFILL_THRESHOLD` (default `20`)
 - `DEFAULT_AUTO_REFILL_PACK_ID` (default `growth`)
+- `DEFAULT_CREDITS_BALANCE` (default `40`)
+- `FIREBASE_SERVICE_ACCOUNT_JSON` (preferred for Render, full JSON string)
+- `FIREBASE_PROJECT_ID` (if not using JSON)
+- `FIREBASE_CLIENT_EMAIL` (if not using JSON)
+- `FIREBASE_PRIVATE_KEY` (if not using JSON; preserve newlines as `\n`)
+- `BILLING_API_KEY` (optional but recommended; required in `x-billing-api-key` header)
 
 ### Render env example
 
@@ -52,4 +61,39 @@ MODE_MULTIPLIER_GENERAL=0.8
 DEFAULT_AUTO_REFILL_THRESHOLD=20
 DEFAULT_AUTO_REFILL_PACK_ID=growth
 BILLING_TOPUP_PACKS_JSON=[{"id":"starter","label":"Starter Pack","credits":120,"priceUsd":9},{"id":"growth","label":"Growth Pack","credits":400,"priceUsd":25,"popular":true},{"id":"pro","label":"Pro Pack","credits":1200,"priceUsd":59}]
+DEFAULT_CREDITS_BALANCE=40
+
+# preferred auth to Firestore (single env)
+FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"...","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n","client_email":"...","client_id":"...","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_x509_cert_url":"..."}
+BILLING_API_KEY=replace_with_random_secret
+```
+
+### Firestore collections used
+
+- `users/{userId}`
+  - `credits_balance` (number)
+  - `auto_refill_enabled` (boolean)
+  - `auto_refill_pack_id` (string)
+  - `auto_refill_threshold` (number)
+- `users/{userId}/credit_ledger/{idempotencyKey}`
+  - top-up / consume / auto-refill ledger entries
+
+### Billing API examples
+
+```bash
+# wallet
+curl -H "x-billing-api-key: $BILLING_API_KEY" \
+  https://your-service.onrender.com/v1/billing/wallet/USER_ID
+
+# topup (idempotent)
+curl -X POST https://your-service.onrender.com/v1/billing/topup \
+  -H "Content-Type: application/json" \
+  -H "x-billing-api-key: $BILLING_API_KEY" \
+  -d '{"userId":"USER_ID","packId":"growth","idempotencyKey":"topup-ORDER123","paymentRef":"ORDER123"}'
+
+# consume (idempotent)
+curl -X POST https://your-service.onrender.com/v1/billing/consume \
+  -H "Content-Type: application/json" \
+  -H "x-billing-api-key: $BILLING_API_KEY" \
+  -d '{"userId":"USER_ID","mode":"electronics","jobCount":1,"idempotencyKey":"job-abc-1","jobRef":"enhance-job-abc"}'
 ```

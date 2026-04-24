@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
+import { estimateFreeListingsLeft, getGuestCredits } from '@/src/billing/credits';
 import { fetchBillingConfig, type BillingConfigResponse } from '@/src/api/billing';
 import { useAuthStore } from '@/src/state/authStore';
 import { useSessionStore } from '@/src/state/sessionStore';
@@ -25,6 +26,7 @@ export default function ProfileScreen() {
   const [billingConfig, setBillingConfig] = useState<BillingConfigResponse | null>(null);
   const [billingError, setBillingError] = useState<string | null>(null);
   const [autoRefillEnabled, setAutoRefillEnabled] = useState(false);
+  const [guestCredits, setGuestCredits] = useState<number | null>(null);
 
   useEffect(() => {
     setName(profile?.display_name ?? '');
@@ -46,6 +48,24 @@ export default function ProfileScreen() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (profile) {
+      setGuestCredits(null);
+      return;
+    }
+    getGuestCredits()
+      .then((value) => {
+        if (active) setGuestCredits(value);
+      })
+      .catch(() => {
+        if (active) setGuestCredits(5);
+      });
+    return () => {
+      active = false;
+    };
+  }, [profile]);
 
   const trialLabel = useMemo(() => {
     if (!profile) return '—';
@@ -86,6 +106,9 @@ export default function ProfileScreen() {
         <View style={styles.creditsCard}>
           <Text style={styles.sectionTitle}>Credits wallet</Text>
           <Text style={styles.creditsTopValue}>{currentCredits.toFixed(1)} credits</Text>
+          {!profile && guestCredits != null ? (
+            <Text style={styles.hint}>Free listings left: {estimateFreeListingsLeft(guestCredits)}</Text>
+          ) : null}
           <Text style={styles.hint}>Available jobs by mode</Text>
           <View style={styles.jobsRow}>
             <Text style={styles.jobsText}>AUTO ~{estimates.auto}</Text>

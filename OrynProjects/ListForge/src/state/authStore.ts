@@ -32,6 +32,7 @@ type AuthState = {
     auto_refill_enabled?: boolean;
     auto_refill_pack_id?: string | null;
     auto_refill_threshold?: number;
+    credits_balance?: number;
   }) => Promise<void>;
 };
 
