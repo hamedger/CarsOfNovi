@@ -28,6 +28,7 @@ app.get("/", (_req, res) => {
       enhanceBatch: "POST /v1/photo/enhance/batch",
       upscale: "POST /v1/photo/upscale",
       enhanceUpscale: "POST /v1/photo/enhance-upscale",
+      defectAnalyze: "POST /v1/photo/defects/analyze",
     },
   });
 });
@@ -47,6 +48,15 @@ type BackgroundStyle =
   | "light_texture";
 
 type EnhanceMode = "auto" | "electronics" | "general";
+type BillingModeMultipliers = Record<EnhanceMode, number>;
+
+type CreditPack = {
+  id: string;
+  label: string;
+  credits: number;
+  priceUsd: number;
+  popular?: boolean;
+};
 
 type EnhanceRequest = {
   imageBase64: string;
@@ -115,6 +125,11 @@ type EnhanceUpscaleRequest = {
   logoPosition?: "top_left" | "top_right" | "bottom_left" | "bottom_right" | "center";
 };
 
+type DefectAnalyzeRequest = {
+  imageBase64: string;
+  stepId?: string;
+};
+
 const allowedBackgrounds = new Set<BackgroundStyle>([
   "original",
   "auto_best",
@@ -129,6 +144,47 @@ const allowedBackgrounds = new Set<BackgroundStyle>([
   "neutral_lifestyle",
   "light_texture",
 ]);
+
+function readNumberEnv(name: string, fallback: number) {
+  const parsed = Number(process.env[name] ?? "");
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function readTopupPacks(): CreditPack[] {
+  const envValue = process.env.BILLING_TOPUP_PACKS_JSON;
+  if (envValue) {
+    try {
+      const parsed = JSON.parse(envValue) as CreditPack[];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter((p) => p && typeof p.id === "string" && Number.isFinite(p.credits) && Number.isFinite(p.priceUsd));
+      }
+    } catch {
+      // fall back to defaults when invalid JSON is provided.
+    }
+  }
+  return [
+    { id: "starter", label: "Starter Pack", credits: 120, priceUsd: 9 },
+    { id: "growth", label: "Growth Pack", credits: 400, priceUsd: 25, popular: true },
+    { id: "pro", label: "Pro Pack", credits: 1200, priceUsd: 59 },
+  ];
+}
+
+function billingConfig() {
+  const multipliers: BillingModeMultipliers = {
+    auto: readNumberEnv("MODE_MULTIPLIER_AUTO", 1.5),
+    electronics: readNumberEnv("MODE_MULTIPLIER_ELECTRONICS", 1.0),
+    general: readNumberEnv("MODE_MULTIPLIER_GENERAL", 0.8),
+  };
+  const packs = readTopupPacks();
+  const defaultAutoRefillPackId = process.env.DEFAULT_AUTO_REFILL_PACK_ID ?? "growth";
+  const fallbackPack = packs[0]?.id ?? "starter";
+  return {
+    topupPacks: packs,
+    modeMultipliers: multipliers,
+    defaultAutoRefillThreshold: readNumberEnv("DEFAULT_AUTO_REFILL_THRESHOLD", 20),
+    defaultAutoRefillPackId: packs.some((p) => p.id === defaultAutoRefillPackId) ? defaultAutoRefillPackId : fallbackPack,
+  };
+}
 
 function isExteriorStep(stepId?: string) {
   return stepId === "front_3_4" || stepId === "side" || stepId === "rear_3_4";
@@ -482,6 +538,81 @@ async function enhanceSingle(input: EnhanceRequest) {
   }
 }
 
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+async function analyzeVehicleDefects(imageBuffer: Buffer, stepId?: string) {
+  const width = 320;
+  const height = 320;
+  const raw = await sharp(imageBuffer, { failOn: "none" })
+    .rotate()
+    .resize(width, height, { fit: "cover" })
+    .greyscale()
+    .raw()
+    .toBuffer();
+  const total = raw.length || 1;
+
+  let darkEdgeCount = 0;
+  let brightEdgeCount = 0;
+  let darkCount = 0;
+  let sum = 0;
+  for (let y = 0; y < height - 1; y += 1) {
+    for (let x = 0; x < width - 1; x += 1) {
+      const i = y * width + x;
+      const p = raw[i] ?? 0;
+      const right = raw[i + 1] ?? p;
+      const down = raw[i + width] ?? p;
+      const grad = Math.abs(p - right) + Math.abs(p - down);
+      sum += p;
+      if (p < 72) darkCount += 1;
+      if (p < 92 && grad > 96) darkEdgeCount += 1;
+      if (p > 212 && grad > 88) brightEdgeCount += 1;
+    }
+  }
+
+  const stats = await sharp(imageBuffer, { failOn: "none" }).rotate().greyscale().stats();
+  const entropy = Number((stats as unknown as { entropy?: number }).entropy ?? 0);
+  const mean = sum / total;
+  const darkRatio = darkCount / total;
+  const darkEdgeRatio = darkEdgeCount / total;
+  const brightEdgeRatio = brightEdgeCount / total;
+
+  const tags: string[] = [];
+  if (darkEdgeRatio > 0.018 || brightEdgeRatio > 0.028) tags.push("scratch_scuff");
+  if (entropy > 6.6 && brightEdgeRatio > 0.018) tags.push("dent_ding");
+  if (darkRatio > 0.22 && darkEdgeRatio > 0.022) tags.push("paint_damage");
+
+  const confidence = clamp(
+    (darkEdgeRatio * 18 + brightEdgeRatio * 12 + Math.max(0, entropy - 6) * 0.35) /
+      (stepId === "side" ? 1 : 1.08),
+    0,
+    0.95,
+  );
+
+  const summary =
+    tags.length > 0
+      ? `Possible ${tags
+          .map((t) =>
+            t === "scratch_scuff" ? "scratch/scuff marks" : t === "dent_ding" ? "minor dent/ding" : "paint damage",
+          )
+          .join(", ")} visible in ${stepId?.replace(/_/g, " ") ?? "exterior"} photo.`
+      : null;
+
+  return {
+    summary,
+    tags,
+    confidence: Number(confidence.toFixed(2)),
+    metrics: {
+      entropy: Number(entropy.toFixed(2)),
+      darkRatio: Number(darkRatio.toFixed(3)),
+      darkEdgeRatio: Number(darkEdgeRatio.toFixed(3)),
+      brightEdgeRatio: Number(brightEdgeRatio.toFixed(3)),
+      luminanceMean: Number(mean.toFixed(1)),
+    },
+  };
+}
+
 app.post("/v1/photo/enhance", async (req, res) => {
   const body = req.body as EnhanceRequest;
   if (!body || typeof body.imageBase64 !== "string" || !body.imageBase64) {
@@ -516,6 +647,10 @@ app.get("/v1/photo/enhance", (_req, res) => {
     error: "MethodNotAllowed",
     message: "Use POST /v1/photo/enhance with JSON body.",
   });
+});
+
+app.get("/v1/billing/config", (_req, res) => {
+  res.status(200).json(billingConfig());
 });
 
 app.post("/v1/photo/enhance/batch", async (req, res) => {
@@ -656,6 +791,28 @@ app.post("/v1/photo/enhance-upscale", async (req, res) => {
     res.status(500).json({
       error: "EnhanceUpscaleFailed",
       message: error instanceof Error ? error.message : "Enhance+upscale failed.",
+    });
+  }
+});
+
+app.post("/v1/photo/defects/analyze", async (req, res) => {
+  const body = req.body as DefectAnalyzeRequest;
+  if (!body || typeof body.imageBase64 !== "string" || !body.imageBase64) {
+    res.status(400).json({ error: "ValidationError", message: "imageBase64 is required." });
+    return;
+  }
+  try {
+    const imageBuffer = Buffer.from(body.imageBase64, "base64");
+    if (!imageBuffer.length) {
+      res.status(400).json({ error: "ValidationError", message: "imageBase64 must be valid base64." });
+      return;
+    }
+    const analyzed = await analyzeVehicleDefects(imageBuffer, body.stepId);
+    res.status(200).json(analyzed);
+  } catch (error) {
+    res.status(500).json({
+      error: "DefectAnalyzeFailed",
+      message: error instanceof Error ? error.message : "Defect analysis failed.",
     });
   }
 });
