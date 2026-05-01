@@ -4,7 +4,18 @@ import * as ImagePicker from 'expo-image-picker';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  BackHandler,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { useCvGuidance } from '@/src/ai/cv/useCvGuidance';
 import { enhanceListingImage } from '@/src/ai/imageEnhancement';
@@ -67,6 +78,7 @@ export default function ItemCaptureScreen() {
   const resolvedMode: ListingMode = mode === 'general' ? 'general' : 'electronics';
 
   const cameraRef = useRef<CameraView>(null);
+  const captureInFlightRef = useRef(false);
   const stepEnteredAtRef = useRef<number>(Date.now());
   const lastAutoCaptureAtRef = useRef<number>(0);
   const [permission, requestPermission] = useCameraPermissions();
@@ -100,6 +112,7 @@ export default function ItemCaptureScreen() {
   const [logoOpacity, setLogoOpacity] = useState(0.2);
   const [logoPosition, setLogoPosition] =
     useState<(typeof LOGO_POSITIONS)[number]['id']>('bottom_right');
+  const [cameraReady, setCameraReady] = useState(false);
 
   const title = useMemo(
     () => (resolvedMode === 'electronics' ? 'Take photos' : 'Guided item photos'),
@@ -128,6 +141,21 @@ export default function ItemCaptureScreen() {
     setPendingStepIndex(null);
     stepEnteredAtRef.current = Date.now();
   }, [resolvedMode]);
+
+  useEffect(() => {
+    if (captureSource !== 'camera') setCameraReady(false);
+  }, [captureSource]);
+
+  useEffect(() => {
+    if (captureSource !== 'camera') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setCaptureSource(null);
+      setAwaitingReady(false);
+      setPendingStepIndex(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [captureSource]);
 
   const stepSignalOverrides = useMemo(() => {
     const label = STEP_PRIMARY_GUIDANCE[currentStep.id] ?? currentStep.hint;
@@ -174,19 +202,25 @@ export default function ItemCaptureScreen() {
       const qualityPass = quality.ok && quality.score >= 62;
 
       const saveShot = async () => {
-        const enhanced = await enhanceListingImage(uri, {
-          lighting: 0.35,
-          neutralBackground: false,
-          mode: resolvedMode === 'general' ? 'general' : 'electronics',
-          backgroundStyle: backgroundOption,
-          backgroundDarkness,
-          logoBase64: canUseDealerBranding ? logoBase64 : undefined,
-          logoOpacity: canUseDealerBranding ? logoOpacity : undefined,
-          logoPosition: canUseDealerBranding ? logoPosition : undefined,
-          preferCloud: true,
-        });
-        addItemPhoto(enhanced.uri);
-        addItemPhotoPair({ originalUri: uri, enhancedUri: enhanced.uri });
+        let enhancedUri = uri;
+        try {
+          const enhanced = await enhanceListingImage(uri, {
+            lighting: 0.35,
+            neutralBackground: false,
+            mode: resolvedMode === 'general' ? 'general' : 'electronics',
+            backgroundStyle: backgroundOption,
+            backgroundDarkness,
+            logoBase64: canUseDealerBranding ? logoBase64 : undefined,
+            logoOpacity: canUseDealerBranding ? logoOpacity : undefined,
+            logoPosition: canUseDealerBranding ? logoPosition : undefined,
+            preferCloud: true,
+          });
+          enhancedUri = enhanced.uri;
+        } catch {
+          enhancedUri = uri;
+        }
+        addItemPhoto(enhancedUri);
+        addItemPhotoPair({ originalUri: uri, enhancedUri });
         const next = stepIndex + 1;
         if (qualityPass) {
           setManualGuidance({
@@ -252,19 +286,33 @@ export default function ItemCaptureScreen() {
   );
 
   const onAddPhoto = useCallback(async () => {
-    if (!cameraRef.current || busy) return;
+    if (!cameraRef.current || busy || !cameraReady || captureInFlightRef.current) return;
+    captureInFlightRef.current = true;
     setBusy(true);
     setQualityScore(null);
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.9 });
+      const cam = cameraRef.current;
+      if (!cam) return;
+      const photo = await cam.takePictureAsync({ quality: 0.9 });
       await processCapturedUri(photo.uri);
+    } catch {
+      // CameraView unmounted (nav/back) or native session not ready — ignore.
     } finally {
+      captureInFlightRef.current = false;
       setBusy(false);
     }
-  }, [busy, processCapturedUri]);
+  }, [busy, cameraReady, processCapturedUri]);
 
   useEffect(() => {
-    if (!autoCaptureEnabled || captureSource !== 'camera' || busy || !guidance || awaitingReady || isCompleted)
+    if (
+      !autoCaptureEnabled ||
+      captureSource !== 'camera' ||
+      !cameraReady ||
+      busy ||
+      !guidance ||
+      awaitingReady ||
+      isCompleted
+    )
       return;
 
     const now = Date.now();
@@ -289,8 +337,18 @@ export default function ItemCaptureScreen() {
 
     lastAutoCaptureAtRef.current = now;
     setAutoCaptureStatus('Captured automatically');
-    void onAddPhoto();
-  }, [autoCaptureEnabled, awaitingReady, autoTick, busy, captureSource, guidance, isCompleted, onAddPhoto]);
+    void onAddPhoto().catch(() => {});
+  }, [
+    autoCaptureEnabled,
+    awaitingReady,
+    autoTick,
+    busy,
+    cameraReady,
+    captureSource,
+    guidance,
+    isCompleted,
+    onAddPhoto,
+  ]);
 
   useEffect(() => {
     if (captureSource !== 'camera') {
@@ -378,7 +436,13 @@ export default function ItemCaptureScreen() {
   if (captureSource === 'camera') {
     return (
       <Screen style={styles.fullscreenRoot}>
-        <CameraView ref={cameraRef} style={styles.fullscreenCamera} facing="back" mode="picture" />
+        <CameraView
+          ref={cameraRef}
+          style={styles.fullscreenCamera}
+          facing="back"
+          mode="picture"
+          onCameraReady={() => setCameraReady(true)}
+        />
         <View pointerEvents="none" style={styles.fullscreenOverlayWrap}>
           <View style={styles.fullscreenOverlayFrame} />
         </View>
@@ -427,6 +491,7 @@ export default function ItemCaptureScreen() {
             <PrimaryButton
               label={busy ? 'Capturing…' : `Capture ${currentStep.title}`}
               loading={busy}
+              disabled={!cameraReady}
               onPress={onAddPhoto}
             />
           ) : null}

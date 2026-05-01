@@ -9,6 +9,7 @@ Minimal Render-ready Node/TypeScript API service for ListForge image enhancement
 - `GET /v1/billing/wallet/:userId` - wallet snapshot (balance + refill settings).
 - `POST /v1/billing/topup` - add credits using idempotency key.
 - `POST /v1/billing/consume` - consume credits per mode, with optional auto-refill.
+- `GET /v1/billing/owner/weekly` - owner weekly dashboard metrics (PIN protected).
 - `POST /v1/photo/enhance` - photo enhancement.
 - `POST /v1/photo/enhance/batch` - batch photo enhancement.
 - `POST /v1/photo/upscale` - upscaling.
@@ -42,6 +43,7 @@ npm start
 - `FIREBASE_CLIENT_EMAIL` (if not using JSON)
 - `FIREBASE_PRIVATE_KEY` (if not using JSON; preserve newlines as `\n`)
 - `BILLING_API_KEY` (optional but recommended; required in `x-billing-api-key` header)
+- `BILLING_OWNER_PIN` (required for owner dashboard endpoint, sent as `x-owner-pin`)
 
 ### Render env example
 
@@ -66,6 +68,7 @@ DEFAULT_CREDITS_BALANCE=40
 # preferred auth to Firestore (single env)
 FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"...","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n","client_email":"...","client_id":"...","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_x509_cert_url":"..."}
 BILLING_API_KEY=replace_with_random_secret
+BILLING_OWNER_PIN=your_secret_owner_pin
 ```
 
 ### Firestore collections used

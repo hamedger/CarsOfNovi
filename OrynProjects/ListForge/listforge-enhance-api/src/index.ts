@@ -5,6 +5,8 @@ import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, type Firestore, FieldValue } from "firebase-admin/firestore";
 import sharp from "sharp";
 
+import { runListingAnalyze } from "./listingAnalyze";
+
 dotenv.config();
 
 const app = express();
@@ -31,6 +33,7 @@ app.get("/", (_req, res) => {
       upscale: "POST /v1/photo/upscale",
       enhanceUpscale: "POST /v1/photo/enhance-upscale",
       defectAnalyze: "POST /v1/photo/defects/analyze",
+      listingAnalyze: "POST /v1/listing/analyze",
     },
   });
 });
@@ -138,6 +141,14 @@ type EnhanceUpscaleRequest = {
 type DefectAnalyzeRequest = {
   imageBase64: string;
   stepId?: string;
+};
+
+type ListingAnalyzeRequest = {
+  mode: "electronics" | "general";
+  imagesBase64: string[];
+  notes?: string;
+  serial?: string;
+  includePricing?: boolean;
 };
 
 const allowedBackgrounds = new Set<BackgroundStyle>([
@@ -266,6 +277,20 @@ function authorizeBillingRequest(req: express.Request, res: express.Response) {
   const provided = req.header("x-billing-api-key") ?? "";
   if (provided !== expected) {
     res.status(401).json({ error: "Unauthorized", message: "Missing or invalid billing API key." });
+    return false;
+  }
+  return true;
+}
+
+function authorizeOwnerRequest(req: express.Request, res: express.Response) {
+  const expected = process.env.BILLING_OWNER_PIN;
+  if (!expected) {
+    res.status(500).json({ error: "OwnerPinNotConfigured", message: "BILLING_OWNER_PIN is not configured." });
+    return false;
+  }
+  const provided = req.header("x-owner-pin") ?? "";
+  if (!provided || provided !== expected) {
+    res.status(401).json({ error: "Unauthorized", message: "Invalid owner PIN." });
     return false;
   }
   return true;
@@ -968,6 +993,84 @@ app.post("/v1/billing/consume", async (req, res) => {
   }
 });
 
+app.get("/v1/billing/owner/weekly", async (req, res) => {
+  if (!authorizeOwnerRequest(req, res)) return;
+  try {
+    const db = ensureFirestore();
+    const now = new Date();
+    const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const fromIso = from.toISOString();
+    const toIso = now.toISOString();
+
+    const [usersSnap, ledgerSnap] = await Promise.all([
+      db.collection("users").where("created_at", ">=", fromIso).get(),
+      db.collectionGroup("credit_ledger").where("created_at", ">=", fromIso).get(),
+    ]);
+
+    let consumed = 0;
+    let topup = 0;
+    let autoRefillTopup = 0;
+    let topupUsd = 0;
+    let consumeEvents = 0;
+    let topupEvents = 0;
+    let autoRefillEvents = 0;
+    const activeBillingUsers = new Set<string>();
+    const payingUsers = new Set<string>();
+
+    for (const doc of ledgerSnap.docs) {
+      const data = doc.data() as Record<string, unknown>;
+      const userId = typeof data.userId === "string" ? data.userId : "";
+      const type = typeof data.type === "string" ? data.type : "";
+      if (userId) activeBillingUsers.add(userId);
+
+      if (type === "consume") {
+        consumeEvents += 1;
+        const delta = Number(data.creditsDelta ?? 0);
+        consumed += Math.abs(delta);
+      } else if (type === "topup") {
+        topupEvents += 1;
+        const delta = Number(data.creditsDelta ?? 0);
+        topup += delta;
+        topupUsd += Number(data.amountUsd ?? 0);
+        if (userId) payingUsers.add(userId);
+      } else if (type === "auto_refill") {
+        autoRefillEvents += 1;
+        const delta = Number(data.creditsDelta ?? 0);
+        autoRefillTopup += delta;
+        topupUsd += Number(data.amountUsd ?? 0);
+        if (userId) payingUsers.add(userId);
+      }
+    }
+
+    res.status(200).json({
+      range: { fromIso, toIso },
+      users: {
+        newUsers: usersSnap.size,
+        activeBillingUsers: activeBillingUsers.size,
+        payingUsers: payingUsers.size,
+      },
+      credits: {
+        consumed: Number(consumed.toFixed(2)),
+        topup: Number(topup.toFixed(2)),
+        autoRefillTopup: Number(autoRefillTopup.toFixed(2)),
+      },
+      revenue: {
+        topupUsd: Number(topupUsd.toFixed(2)),
+      },
+      events: {
+        consumeEvents,
+        topupEvents,
+        autoRefillEvents,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: "OwnerWeeklyFailed",
+      message: error instanceof Error ? error.message : "Failed to compute weekly owner metrics.",
+    });
+  }
+});
+
 app.post("/v1/photo/enhance/batch", async (req, res) => {
   const body = req.body as BatchEnhanceRequest;
   const photos = body?.photos;
@@ -1128,6 +1231,39 @@ app.post("/v1/photo/defects/analyze", async (req, res) => {
     res.status(500).json({
       error: "DefectAnalyzeFailed",
       message: error instanceof Error ? error.message : "Defect analysis failed.",
+    });
+  }
+});
+
+app.post("/v1/listing/analyze", async (req, res) => {
+  const body = req.body as ListingAnalyzeRequest;
+  if (!body?.mode || !["electronics", "general"].includes(body.mode)) {
+    res.status(400).json({ error: "ValidationError", message: "mode must be electronics or general." });
+    return;
+  }
+  if (!Array.isArray(body.imagesBase64) || body.imagesBase64.length === 0) {
+    res.status(400).json({ error: "ValidationError", message: "imagesBase64 must be a non-empty array." });
+    return;
+  }
+  try {
+    const result = await runListingAnalyze({
+      mode: body.mode,
+      imagesBase64: body.imagesBase64,
+      notes: body.notes,
+      serial: body.serial,
+      includePricing: body.includePricing,
+    });
+    res.status(200).json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Listing analyze failed.";
+    const lower = message.toLowerCase();
+    if (lower.includes("openai_api_key") || lower.includes("not configured")) {
+      res.status(503).json({ error: "ListingAnalyzeNotConfigured", message });
+      return;
+    }
+    res.status(500).json({
+      error: "ListingAnalyzeFailed",
+      message,
     });
   }
 });
