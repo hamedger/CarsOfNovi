@@ -1,0 +1,50 @@
+[
+  {
+    "id": "oil-change",
+    "badge": "Most Popular",
+    "title": "$10 OFF",
+    "subtitle": "Full Synthetic Oil Change",
+    "description": "Includes multi-point inspection and tire pressure check.",
+    "code": "CARS-OIL10",
+    "terms": "Valid on full synthetic oil change. One coupon per visit. Cannot combine with other offers.",
+    "expires": "June 30, 2026",
+    "accent": "#0EA5E9",
+    "active": true
+  },
+  {
+    "id": "brake-inspection",
+    "badge": "Free Service",
+    "title": "FREE",
+    "subtitle": "Brake Inspection",
+    "description": "Complete brake system inspection including pads, rotors, and calipers.",
+    "code": "CARS-BRAKE",
+    "terms": "Free inspection with any paid service. One coupon per visit. Cannot combine with other offers.",
+    "expires": "June 30, 2026",
+    "accent": "#EF4444",
+    "active": true
+  },
+  {
+    "id": "multipoint",
+    "badge": "Limited Time",
+    "title": "15% OFF",
+    "subtitle": "Any Repair Over $200",
+    "description": "Save on engine, suspension, electrical, or transmission repairs.",
+    "code": "CARS-SAVE15",
+    "terms": "Valid on repairs $200+. One coupon per visit. Cannot combine with other offers.",
+    "expires": "May 31, 2026",
+    "accent": "#10B981",
+    "active": true
+  },
+  {
+    "id": "ac-check",
+    "badge": "Summer Special",
+    "title": "FREE",
+    "subtitle": "A/C Performance Check",
+    "description": "Refrigerant level check, compressor test, and vent temperature reading.",
+    "code": "CARS-AC24",
+    "terms": "Free A/C check with any paid service. One coupon per visit.",
+    "expires": "August 31, 2026",
+    "accent": "#8B5CF6",
+    "active": true
+  }
+]

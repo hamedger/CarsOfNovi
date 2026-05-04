@@ -1,0 +1,509 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  ClipboardList, Phone, Mail, Car, Wrench, Calendar,
+  Tag, Plus, Pencil, Trash2, X, Check, ChevronDown,
+  ChevronUp, BookOpen, AlertCircle, ToggleLeft, ToggleRight, LogOut,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface Submission {
+  id: string; name: string; phone: string; email: string;
+  vehicleYear: string; vehicleMake: string; vehicleModel: string;
+  serviceNeeded: string; message: string; submittedAt: string;
+}
+
+interface Coupon {
+  id: string; badge: string; title: string; subtitle: string;
+  description: string; code: string; terms: string;
+  expires: string; accent: string; active: boolean;
+}
+
+const ACCENT_OPTIONS = [
+  { label: "Blue", value: "#0EA5E9" },
+  { label: "Red", value: "#EF4444" },
+  { label: "Green", value: "#10B981" },
+  { label: "Purple", value: "#8B5CF6" },
+  { label: "Orange", value: "#F97316" },
+  { label: "Yellow", value: "#EAB308" },
+];
+
+const EMPTY_COUPON: Omit<Coupon, "id"> = {
+  badge: "", title: "", subtitle: "", description: "",
+  code: "", terms: "One coupon per visit. Cannot combine with other offers.",
+  expires: "", accent: "#0EA5E9", active: true,
+};
+
+// ─── Instruction Manual ───────────────────────────────────────────────────────
+
+function InstructionManual() {
+  const [open, setOpen] = useState(false);
+
+  const steps = [
+    {
+      num: "01",
+      title: "Add a New Coupon",
+      body: 'Click the "Add New Coupon" button. Fill in all required fields marked with *. Choose a color accent that matches the offer type (blue for general, red for urgent, green for savings). Click "Save Coupon" when done. It will appear on the website immediately.',
+    },
+    {
+      num: "02",
+      title: "Edit an Existing Coupon",
+      body: 'Click the pencil (✏) icon on any coupon card. Update the fields you want to change — title, discount amount, expiry date, etc. Click "Save Changes" to apply. The live website updates instantly.',
+    },
+    {
+      num: "03",
+      title: "Disable / Enable a Coupon",
+      body: "Use the toggle switch on each coupon card to hide it from the website without deleting it. Toggle it back on to show it again. Use this for seasonal offers or when a promotion ends.",
+    },
+    {
+      num: "04",
+      title: "Delete a Coupon",
+      body: "Click the trash (🗑) icon and confirm deletion. This permanently removes the coupon. If you might use it again, disable it instead of deleting.",
+    },
+    {
+      num: "05",
+      title: "Coupon Code Best Practices",
+      body: 'Keep codes short and memorable: "CARS-OIL10", "CARS-FREE". Use all caps. Include the discount amount in the code so staff can identify it quickly at the counter.',
+    },
+    {
+      num: "06",
+      title: "Expiry Dates",
+      body: 'Format dates clearly: "June 30, 2026" or "December 31, 2026". Always set an expiry — open-ended coupons lead to customer disputes. Update the expiry date to extend a promotion rather than creating a duplicate coupon.',
+    },
+  ];
+
+  return (
+    <div className="bg-[#0A0A0A] border border-[#1F1F1F] rounded-2xl overflow-hidden mb-8">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-6 py-5 hover:bg-[#111] transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <BookOpen size={18} className="text-[#0EA5E9]" />
+          <div className="text-left">
+            <p className="text-white font-semibold text-sm">Admin Instruction Manual — Coupons</p>
+            <p className="text-gray-500 text-xs mt-0.5">How to add, edit, disable, and delete coupons</p>
+          </div>
+        </div>
+        {open ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+      </button>
+
+      {open && (
+        <div className="px-6 pb-6 border-t border-[#1F1F1F]">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+            {steps.map((step) => (
+              <div key={step.num} className="flex gap-4">
+                <div className="shrink-0 w-8 h-8 bg-[#0EA5E9]/10 border border-[#0EA5E9]/20 rounded-lg flex items-center justify-center">
+                  <span className="text-[#0EA5E9] text-xs font-bold font-mono">{step.num}</span>
+                </div>
+                <div>
+                  <p className="text-white font-semibold text-sm mb-1">{step.title}</p>
+                  <p className="text-gray-400 text-xs leading-relaxed">{step.body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 bg-[#0EA5E9]/5 border border-[#0EA5E9]/20 rounded-xl p-4">
+            <div className="flex items-start gap-2">
+              <AlertCircle size={14} className="text-[#0EA5E9] mt-0.5 shrink-0" />
+              <div>
+                <p className="text-[#0EA5E9] text-xs font-semibold mb-1">Important Notes</p>
+                <ul className="text-gray-400 text-xs space-y-1 leading-relaxed">
+                  <li>• Changes take effect on the live website immediately — no restart needed.</li>
+                  <li>• Coupon codes must be unique. The system will warn you if a code already exists.</li>
+                  <li>• Disabled coupons are hidden from customers but preserved for future use.</li>
+                  <li>• The website only shows active coupons. If the Specials section disappears, all coupons are disabled.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Coupon Form ──────────────────────────────────────────────────────────────
+
+function CouponForm({
+  initial, onSave, onCancel,
+}: {
+  initial: Omit<Coupon, "id"> & { id?: string };
+  onSave: (data: Omit<Coupon, "id"> & { id?: string }) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [form, setForm] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const set = (k: keyof typeof form) => (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => setForm((p) => ({ ...p, [k]: e.target.value }));
+
+  const handleSave = async () => {
+    const errs: Record<string, string> = {};
+    if (!form.title.trim()) errs.title = "Required";
+    if (!form.subtitle.trim()) errs.subtitle = "Required";
+    if (!form.code.trim()) errs.code = "Required";
+    if (!form.expires.trim()) errs.expires = "Required";
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+    setSaving(true);
+    await onSave(form);
+    setSaving(false);
+  };
+
+  const inputCls = (err?: string) =>
+    `w-full bg-[#0A0A0A] border ${err ? "border-red-500/60" : "border-[#2A2A2A]"} rounded-xl px-4 py-3 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#0EA5E9] transition-all`;
+
+  return (
+    <div className="bg-[#0A0A0A] border border-[#0EA5E9]/30 rounded-2xl p-6 mb-6">
+      <h3 className="text-white font-semibold text-base mb-5">
+        {form.id ? "Edit Coupon" : "New Coupon"}
+      </h3>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Title */}
+        <div>
+          <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">Title * <span className="text-gray-600 normal-case">(e.g. $10 OFF, FREE)</span></label>
+          <input placeholder="$10 OFF" value={form.title} onChange={set("title")} className={inputCls(errors.title)} />
+          {errors.title && <p className="text-red-400 text-xs mt-1">{errors.title}</p>}
+        </div>
+
+        {/* Subtitle */}
+        <div>
+          <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">Subtitle * <span className="text-gray-600 normal-case">(service name)</span></label>
+          <input placeholder="Full Synthetic Oil Change" value={form.subtitle} onChange={set("subtitle")} className={inputCls(errors.subtitle)} />
+          {errors.subtitle && <p className="text-red-400 text-xs mt-1">{errors.subtitle}</p>}
+        </div>
+
+        {/* Badge */}
+        <div>
+          <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">Badge Label</label>
+          <input placeholder="Most Popular / Limited Time / Free Service" value={form.badge} onChange={set("badge")} className={inputCls()} />
+        </div>
+
+        {/* Code */}
+        <div>
+          <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">Coupon Code *</label>
+          <input placeholder="CARS-OIL10" value={form.code} onChange={(e) => setForm((p) => ({ ...p, code: e.target.value.toUpperCase() }))} className={inputCls(errors.code)} />
+          {errors.code && <p className="text-red-400 text-xs mt-1">{errors.code}</p>}
+        </div>
+
+        {/* Expires */}
+        <div>
+          <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">Expiry Date *</label>
+          <input placeholder="June 30, 2026" value={form.expires} onChange={set("expires")} className={inputCls(errors.expires)} />
+          {errors.expires && <p className="text-red-400 text-xs mt-1">{errors.expires}</p>}
+        </div>
+
+        {/* Accent color */}
+        <div>
+          <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">Color</label>
+          <div className="flex gap-2 flex-wrap">
+            {ACCENT_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setForm((p) => ({ ...p, accent: opt.value }))}
+                title={opt.label}
+                className={`w-8 h-8 rounded-full border-2 transition-all ${form.accent === opt.value ? "border-white scale-110" : "border-transparent"}`}
+                style={{ background: opt.value }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Description */}
+        <div className="sm:col-span-2">
+          <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">Description</label>
+          <input placeholder="Short description of what's included" value={form.description} onChange={set("description")} className={inputCls()} />
+        </div>
+
+        {/* Terms */}
+        <div className="sm:col-span-2">
+          <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">Terms & Conditions</label>
+          <textarea rows={2} value={form.terms} onChange={set("terms")} className={`${inputCls()} resize-none`} />
+        </div>
+
+        {/* Active toggle */}
+        <div className="sm:col-span-2 flex items-center gap-3">
+          <button onClick={() => setForm((p) => ({ ...p, active: !p.active }))} className="text-[#0EA5E9]">
+            {form.active ? <ToggleRight size={28} /> : <ToggleLeft size={28} className="text-gray-600" />}
+          </button>
+          <span className="text-sm text-gray-300">{form.active ? "Active — visible on website" : "Disabled — hidden from website"}</span>
+        </div>
+      </div>
+
+      <div className="flex gap-3 mt-6">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-2 bg-[#0EA5E9] hover:bg-[#0284C7] disabled:opacity-60 text-white font-semibold text-sm px-6 py-2.5 rounded-xl transition-colors"
+        >
+          <Check size={15} />
+          {saving ? "Saving..." : form.id ? "Save Changes" : "Save Coupon"}
+        </button>
+        <button onClick={onCancel} className="flex items-center gap-2 bg-[#111] border border-[#2A2A2A] text-gray-300 text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#1A1A1A] transition-colors">
+          <X size={15} />
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Admin Page ──────────────────────────────────────────────────────────
+
+export default function AdminPage() {
+  const router = useRouter();
+  const [tab, setTab] = useState<"estimates" | "coupons">("estimates");
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [loadingEst, setLoadingEst] = useState(true);
+  const [loadingCoupons, setLoadingCoupons] = useState(true);
+  const [editingCoupon, setEditingCoupon] = useState<(Omit<Coupon, "id"> & { id?: string }) | null>(null);
+  const [showNewForm, setShowNewForm] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/estimate").then((r) => r.json()).then((d) => { setSubmissions(d.submissions || []); setLoadingEst(false); }).catch(() => setLoadingEst(false));
+    fetchCoupons();
+  }, []);
+
+  const fetchCoupons = () => {
+    setLoadingCoupons(true);
+    fetch("/api/coupons?all=true").then((r) => r.json()).then((d) => { setCoupons(d); setLoadingCoupons(false); }).catch(() => setLoadingCoupons(false));
+  };
+
+  const saveCoupon = async (data: Omit<Coupon, "id"> & { id?: string }) => {
+    const method = data.id ? "PUT" : "POST";
+    const res = await fetch("/api/coupons", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    const json = await res.json();
+    if (json.success) { fetchCoupons(); setEditingCoupon(null); setShowNewForm(false); }
+    else alert(json.errors ? Object.values(json.errors).join("\n") : json.message);
+  };
+
+  const toggleActive = async (coupon: Coupon) => {
+    await fetch("/api/coupons", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...coupon, active: !coupon.active }) });
+    fetchCoupons();
+  };
+
+  const deleteCoupon = async (id: string) => {
+    await fetch("/api/coupons", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    setDeleteConfirm(null);
+    fetchCoupons();
+  };
+
+  return (
+    <div className="min-h-screen bg-black text-white p-6">
+      <div className="max-w-6xl mx-auto">
+
+        {/* Header */}
+        <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-[#0EA5E9] rounded-lg flex items-center justify-center font-bold text-white">C</div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-wide">C.A.R.S. Admin</h1>
+              <p className="text-gray-500 text-xs mt-0.5">Management Dashboard</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <a href="/" className="text-sm text-gray-400 hover:text-[#0EA5E9] transition-colors">← View Website</a>
+            <button
+              onClick={async () => {
+                await fetch("/api/admin/login", { method: "DELETE" });
+                router.push("/admin/login");
+              }}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-red-400 transition-colors"
+            >
+              <LogOut size={14} />
+              Sign Out
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 bg-[#0A0A0A] border border-[#1F1F1F] rounded-xl p-1 w-fit mb-8">
+          {(["estimates", "coupons"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-5 py-2 rounded-lg text-sm font-medium transition-all capitalize ${tab === t ? "bg-[#0EA5E9] text-white" : "text-gray-400 hover:text-white"}`}
+            >
+              {t === "estimates" ? `Estimates (${submissions.length})` : `Coupons (${coupons.length})`}
+            </button>
+          ))}
+        </div>
+
+        {/* ── ESTIMATES TAB ── */}
+        {tab === "estimates" && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+              <div className="bg-[#0A0A0A] border border-[#1F1F1F] rounded-xl p-5">
+                <p className="text-gray-400 text-sm">Total Submissions</p>
+                <p className="text-4xl font-bold text-[#0EA5E9] mt-1">{submissions.length}</p>
+              </div>
+              <div className="bg-[#0A0A0A] border border-[#1F1F1F] rounded-xl p-5">
+                <p className="text-gray-400 text-sm">Today</p>
+                <p className="text-4xl font-bold text-white mt-1">
+                  {submissions.filter((s) => new Date(s.submittedAt).toDateString() === new Date().toDateString()).length}
+                </p>
+              </div>
+              <div className="bg-[#0A0A0A] border border-[#1F1F1F] rounded-xl p-5">
+                <p className="text-gray-400 text-sm">Status</p>
+                <p className="text-lg font-semibold text-green-400 mt-1">● Operational</p>
+              </div>
+            </div>
+
+            {loadingEst ? (
+              <p className="text-center py-20 text-gray-500">Loading...</p>
+            ) : submissions.length === 0 ? (
+              <div className="text-center py-20 text-gray-500">
+                <ClipboardList size={48} className="mx-auto mb-4 opacity-30" />
+                <p>No estimate submissions yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {submissions.map((sub) => (
+                  <div key={sub.id} className="bg-[#0A0A0A] border border-[#1F1F1F] rounded-xl p-6 hover:border-[#0EA5E9]/30 transition-colors">
+                    <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
+                      <div>
+                        <h3 className="text-xl font-semibold">{sub.name}</h3>
+                        <p className="text-xs text-gray-500 font-mono mt-1">{sub.id}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-gray-400 bg-[#1A1A1A] px-3 py-1.5 rounded-full">
+                        <Calendar size={12} />
+                        {new Date(sub.submittedAt).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                      <div className="flex items-center gap-2 text-gray-300"><Phone size={14} className="text-[#0EA5E9] shrink-0" />{sub.phone}</div>
+                      <div className="flex items-center gap-2 text-gray-300"><Mail size={14} className="text-[#0EA5E9] shrink-0" />{sub.email}</div>
+                      <div className="flex items-center gap-2 text-gray-300"><Car size={14} className="text-[#0EA5E9] shrink-0" />{sub.vehicleYear} {sub.vehicleMake} {sub.vehicleModel}</div>
+                      <div className="flex items-center gap-2 text-gray-300 md:col-span-2"><Wrench size={14} className="text-[#0EA5E9] shrink-0" />{sub.serviceNeeded}</div>
+                    </div>
+                    {sub.message && (
+                      <div className="mt-4 pt-4 border-t border-[#1F1F1F] text-sm text-gray-400">
+                        <p className="text-xs text-gray-500 mb-1">Message:</p>{sub.message}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── COUPONS TAB ── */}
+        {tab === "coupons" && (
+          <>
+            <InstructionManual />
+
+            {/* Add new button */}
+            {!showNewForm && !editingCoupon && (
+              <button
+                onClick={() => setShowNewForm(true)}
+                className="flex items-center gap-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition-colors mb-6"
+              >
+                <Plus size={16} />
+                Add New Coupon
+              </button>
+            )}
+
+            {/* New coupon form */}
+            {showNewForm && (
+              <CouponForm initial={EMPTY_COUPON} onSave={saveCoupon} onCancel={() => setShowNewForm(false)} />
+            )}
+
+            {/* Coupon list */}
+            {loadingCoupons ? (
+              <p className="text-center py-10 text-gray-500">Loading coupons...</p>
+            ) : coupons.length === 0 ? (
+              <div className="text-center py-20 text-gray-500">
+                <Tag size={48} className="mx-auto mb-4 opacity-30" />
+                <p>No coupons yet. Add your first one above.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {coupons.map((coupon) => (
+                  <div key={coupon.id}>
+                    {editingCoupon?.id === coupon.id ? (
+                      <CouponForm initial={editingCoupon} onSave={saveCoupon} onCancel={() => setEditingCoupon(null)} />
+                    ) : (
+                      <div className={`bg-[#0A0A0A] border rounded-xl p-5 transition-colors ${coupon.active ? "border-[#1F1F1F]" : "border-[#1F1F1F] opacity-50"}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                          <div className="flex items-center gap-4">
+                            <div className="w-2 h-10 rounded-full shrink-0" style={{ background: coupon.accent }} />
+                            <div>
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className="text-white font-bold text-lg">{coupon.title}</span>
+                                <span className="text-gray-400 text-sm">— {coupon.subtitle}</span>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-gray-500">
+                                <span className="font-mono bg-[#111] px-2 py-0.5 rounded">{coupon.code}</span>
+                                <span>Expires {coupon.expires}</span>
+                                <span
+                                  className="px-2 py-0.5 rounded-full"
+                                  style={{ background: `${coupon.accent}18`, color: coupon.accent }}
+                                >
+                                  {coupon.badge}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {/* Toggle active */}
+                            <button
+                              onClick={() => toggleActive(coupon)}
+                              title={coupon.active ? "Disable coupon" : "Enable coupon"}
+                              className="p-2 rounded-lg hover:bg-[#1A1A1A] transition-colors"
+                            >
+                              {coupon.active
+                                ? <ToggleRight size={20} className="text-[#0EA5E9]" />
+                                : <ToggleLeft size={20} className="text-gray-600" />}
+                            </button>
+
+                            {/* Edit */}
+                            <button
+                              onClick={() => { setShowNewForm(false); setEditingCoupon(coupon); }}
+                              className="p-2 rounded-lg hover:bg-[#1A1A1A] text-gray-400 hover:text-white transition-colors"
+                              title="Edit coupon"
+                            >
+                              <Pencil size={15} />
+                            </button>
+
+                            {/* Delete */}
+                            {deleteConfirm === coupon.id ? (
+                              <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-1.5">
+                                <span className="text-red-400 text-xs">Delete?</span>
+                                <button onClick={() => deleteCoupon(coupon.id)} className="text-red-400 hover:text-red-300 text-xs font-semibold">Yes</button>
+                                <button onClick={() => setDeleteConfirm(null)} className="text-gray-500 hover:text-gray-300 text-xs">No</button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setDeleteConfirm(coupon.id)}
+                                className="p-2 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-colors"
+                                title="Delete coupon"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
