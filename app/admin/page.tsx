@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import {
   ClipboardList, Phone, Mail, Car, Wrench, Calendar,
   Tag, Plus, Pencil, Trash2, X, Check, ChevronDown,
-  ChevronUp, BookOpen, AlertCircle, ToggleLeft, ToggleRight, LogOut,
+  ChevronUp, BookOpen, AlertCircle, ToggleLeft, ToggleRight,
+  LogOut, Reply, Send, CheckCircle2, Loader2, Link, DollarSign,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -256,6 +257,241 @@ function CouponForm({
   );
 }
 
+// ─── Reply Panel ─────────────────────────────────────────────────────────────
+
+function ReplyPanel({ submission, onClose }: { submission: Submission; onClose: () => void }) {
+  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const handleSend = async () => {
+    if (!message.trim()) return;
+    setStatus("sending");
+    try {
+      const res = await fetch("/api/admin/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerName: submission.name,
+          customerEmail: submission.email,
+          referenceId: submission.id,
+          vehicle: `${submission.vehicleYear} ${submission.vehicleMake} ${submission.vehicleModel}`,
+          serviceNeeded: submission.serviceNeeded,
+          message: message.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStatus("sent");
+      } else {
+        setErrorMsg(data.message || "Failed to send.");
+        setStatus("error");
+      }
+    } catch {
+      setErrorMsg("Network error. Please try again.");
+      setStatus("error");
+    }
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-[#1F1F1F]">
+      {status === "sent" ? (
+        <div className="flex items-center gap-2 text-green-400 text-sm py-2">
+          <CheckCircle2 size={16} />
+          Reply sent to <strong>{submission.email}</strong>
+          <button onClick={onClose} className="ml-auto text-gray-500 hover:text-gray-300 text-xs">
+            Close
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-gray-400 uppercase tracking-wider">
+              Reply to <span className="text-white font-semibold">{submission.name}</span>
+              <span className="text-gray-600 ml-1">({submission.email})</span>
+            </p>
+            <button onClick={onClose} className="text-gray-600 hover:text-gray-300 transition-colors">
+              <X size={14} />
+            </button>
+          </div>
+
+          <textarea
+            rows={4}
+            placeholder={`Hi ${submission.name},\n\nThank you for your estimate request...`}
+            value={message}
+            onChange={(e) => { setMessage(e.target.value); setStatus("idle"); setErrorMsg(""); }}
+            className="w-full bg-[#111] border border-[#2A2A2A] rounded-xl px-4 py-3 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#0EA5E9] focus:ring-1 focus:ring-[#0EA5E9]/30 transition-all resize-none"
+          />
+
+          {status === "error" && (
+            <div className="flex items-center gap-2 text-red-400 text-xs mt-2">
+              <AlertCircle size={12} />
+              {errorMsg}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 mt-3">
+            <button
+              onClick={handleSend}
+              disabled={!message.trim() || status === "sending"}
+              className="flex items-center gap-2 bg-[#0EA5E9] hover:bg-[#0284C7] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors"
+            >
+              {status === "sending"
+                ? <><Loader2 size={14} className="animate-spin" /> Sending...</>
+                : <><Send size={14} /> Send Reply</>}
+            </button>
+            <p className="text-xs text-gray-600">
+              Sends from C.A.R.S. — reply-to: carsofnovi@gmail.com
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Payment Panel ────────────────────────────────────────────────────────────
+
+function PaymentPanel({ submission, onClose }: { submission: Submission; onClose: () => void }) {
+  const [paymentLink, setPaymentLink] = useState("");
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const handleSend = async () => {
+    if (!paymentLink.trim() || !amount) return;
+    setStatus("sending");
+    try {
+      const res = await fetch("/api/admin/payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerName: submission.name,
+          customerEmail: submission.email,
+          referenceId: submission.id,
+          vehicle: `${submission.vehicleYear} ${submission.vehicleMake} ${submission.vehicleModel}`,
+          serviceNeeded: submission.serviceNeeded,
+          amount,
+          note,
+          paymentLink: paymentLink.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStatus("sent");
+      } else {
+        setErrorMsg(data.message || "Failed to send.");
+        setStatus("error");
+      }
+    } catch {
+      setErrorMsg("Network error. Please try again.");
+      setStatus("error");
+    }
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-[#1F1F1F]">
+      {status === "sent" ? (
+        <div className="flex items-center gap-2 text-green-400 text-sm py-2">
+          <CheckCircle2 size={16} />
+          Payment link sent to <strong>{submission.email}</strong>
+          <button onClick={onClose} className="ml-auto text-gray-500 hover:text-gray-300 text-xs">Close</button>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs text-gray-400 uppercase tracking-wider">
+              Send Payment Link to <span className="text-white font-semibold">{submission.name}</span>
+              <span className="text-gray-600 ml-1">({submission.email})</span>
+            </p>
+            <button onClick={onClose} className="text-gray-600 hover:text-gray-300 transition-colors">
+              <X size={14} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            {/* Amount */}
+            <div>
+              <label className="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">
+                Amount Due *
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                <input
+                  type="number"
+                  placeholder="0.00"
+                  value={amount}
+                  min="0"
+                  step="0.01"
+                  onChange={(e) => { setAmount(e.target.value); setStatus("idle"); }}
+                  className="w-full bg-[#111] border border-[#2A2A2A] rounded-xl pl-7 pr-4 py-3 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#0EA5E9] focus:ring-1 focus:ring-[#0EA5E9]/30 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Note */}
+            <div>
+              <label className="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">
+                Note (optional)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Brake job + oil change"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                className="w-full bg-[#111] border border-[#2A2A2A] rounded-xl px-4 py-3 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#0EA5E9] focus:ring-1 focus:ring-[#0EA5E9]/30 transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Payment link */}
+          <div className="mb-3">
+            <label className="block text-xs text-gray-500 uppercase tracking-wider mb-1.5">
+              QuickBooks Payment Link *
+            </label>
+            <div className="relative">
+              <Link size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+              <input
+                type="url"
+                placeholder="https://quickbooks.intuit.com/pay/..."
+                value={paymentLink}
+                onChange={(e) => { setPaymentLink(e.target.value); setStatus("idle"); setErrorMsg(""); }}
+                className="w-full bg-[#111] border border-[#2A2A2A] rounded-xl pl-9 pr-4 py-3 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-[#0EA5E9] focus:ring-1 focus:ring-[#0EA5E9]/30 transition-all"
+              />
+            </div>
+            <p className="text-[10px] text-gray-600 mt-1">
+              In QuickBooks: create an invoice → Share → Copy link
+            </p>
+          </div>
+
+          {status === "error" && (
+            <div className="flex items-center gap-2 text-red-400 text-xs mb-3">
+              <AlertCircle size={12} />
+              {errorMsg}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSend}
+              disabled={!paymentLink.trim() || !amount || status === "sending"}
+              className="flex items-center gap-2 bg-[#0EA5E9] hover:bg-[#0284C7] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors"
+            >
+              {status === "sending"
+                ? <><Loader2 size={14} className="animate-spin" /> Sending...</>
+                : <><DollarSign size={14} /> Send Payment Link</>}
+            </button>
+            <p className="text-xs text-gray-600">
+              Customer receives a branded email with a Pay Now button.
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Admin Page ──────────────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -268,6 +504,8 @@ export default function AdminPage() {
   const [editingCoupon, setEditingCoupon] = useState<(Omit<Coupon, "id"> & { id?: string }) | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [payingTo, setPayingTo] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/estimate").then((r) => r.json()).then((d) => { setSubmissions(d.submissions || []); setLoadingEst(false); }).catch(() => setLoadingEst(false));
@@ -375,9 +613,33 @@ export default function AdminPage() {
                         <h3 className="text-xl font-semibold">{sub.name}</h3>
                         <p className="text-xs text-gray-500 font-mono mt-1">{sub.id}</p>
                       </div>
-                      <div className="flex items-center gap-1.5 text-xs text-gray-400 bg-[#1A1A1A] px-3 py-1.5 rounded-full">
-                        <Calendar size={12} />
-                        {new Date(sub.submittedAt).toLocaleString()}
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1.5 text-xs text-gray-400 bg-[#1A1A1A] px-3 py-1.5 rounded-full">
+                          <Calendar size={12} />
+                          {new Date(sub.submittedAt).toLocaleString()}
+                        </div>
+                        <button
+                          onClick={() => { setPayingTo(null); setReplyingTo(replyingTo === sub.id ? null : sub.id); }}
+                          className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                            replyingTo === sub.id
+                              ? "bg-[#0EA5E9]/10 border-[#0EA5E9]/40 text-[#0EA5E9]"
+                              : "border-[#2A2A2A] text-gray-400 hover:text-[#0EA5E9] hover:border-[#0EA5E9]/30"
+                          }`}
+                        >
+                          <Reply size={12} />
+                          Reply
+                        </button>
+                        <button
+                          onClick={() => { setReplyingTo(null); setPayingTo(payingTo === sub.id ? null : sub.id); }}
+                          className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                            payingTo === sub.id
+                              ? "bg-green-500/10 border-green-500/40 text-green-400"
+                              : "border-[#2A2A2A] text-gray-400 hover:text-green-400 hover:border-green-500/30"
+                          }`}
+                        >
+                          <DollarSign size={12} />
+                          Payment Link
+                        </button>
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
@@ -390,6 +652,12 @@ export default function AdminPage() {
                       <div className="mt-4 pt-4 border-t border-[#1F1F1F] text-sm text-gray-400">
                         <p className="text-xs text-gray-500 mb-1">Message:</p>{sub.message}
                       </div>
+                    )}
+                    {replyingTo === sub.id && (
+                      <ReplyPanel submission={sub} onClose={() => setReplyingTo(null)} />
+                    )}
+                    {payingTo === sub.id && (
+                      <PaymentPanel submission={sub} onClose={() => setPayingTo(null)} />
                     )}
                   </div>
                 ))}

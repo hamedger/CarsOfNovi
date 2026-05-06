@@ -3,7 +3,6 @@ import Footer from "@/components/Footer";
 import BookingWidget from "@/components/BookingWidget";
 import HeroSection from "@/sections/HeroSection";
 import ServicesSection from "@/sections/ServicesSection";
-import SpecialsSection from "@/sections/SpecialsSection";
 import AboutSection from "@/sections/AboutSection";
 import EstimateSection from "@/sections/EstimateSection";
 import TestimonialsSection from "@/sections/TestimonialsSection";
@@ -16,8 +15,7 @@ export default function Home() {
       <main>
         <HeroSection />
         <ServicesSection />
-        <SpecialsSection />
-        <AboutSection />
+<AboutSection />
         <EstimateSection />
         <TestimonialsSection />
         <ContactSection />

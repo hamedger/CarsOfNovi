@@ -4,10 +4,11 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, Phone } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 
 const navLinks = [
   { label: "Services", href: "#services" },
-  { label: "Specials", href: "#specials" },
   { label: "About", href: "#about" },
   { label: "Estimate", href: "#estimate" },
   { label: "Testimonials", href: "#testimonials" },
@@ -17,6 +18,8 @@ const navLinks = [
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -26,6 +29,10 @@ export default function Navbar() {
 
   const handleNavClick = (href: string) => {
     setMenuOpen(false);
+    if (pathname !== "/") {
+      router.push(`/${href}`);
+      return;
+    }
     const el = document.querySelector(href);
     if (el) el.scrollIntoView({ behavior: "smooth" });
   };
@@ -46,9 +53,14 @@ export default function Navbar() {
           <div className="flex items-center justify-between h-[72px]">
             {/* Logo */}
             <a
-              href="#"
+              href="/"
               className="flex items-center gap-2 group"
-              onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+              onClick={(e) => {
+                if (pathname === "/") {
+                  e.preventDefault();
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }
+              }}
             >
               <Image
                 src="/logo.png"
@@ -72,6 +84,14 @@ export default function Navbar() {
                   <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-[#0EA5E9] transition-all duration-300 group-hover:w-full" />
                 </button>
               ))}
+              <Link
+                href="/careers"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-green-400 hover:text-green-300 transition-colors relative group"
+              >
+                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                We&apos;re Hiring
+                <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-green-400 transition-all duration-300 group-hover:w-full" />
+              </Link>
             </nav>
 
             {/* CTA + Mobile toggle */}
@@ -123,6 +143,14 @@ export default function Navbar() {
                   {link.label}
                 </button>
               ))}
+              <Link
+                href="/careers"
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center gap-2 text-base font-medium text-green-400 hover:text-green-300 hover:bg-[#111] px-4 py-3 rounded-lg transition-all"
+              >
+                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                We&apos;re Hiring
+              </Link>
               <div className="mt-3 pt-3 border-t border-[#1F1F1F] flex flex-col gap-2">
                 <a
                   href="tel:+15555550100"
