@@ -4,8 +4,8 @@ import { motion } from "framer-motion";
 import { Phone, Mail, MapPin, Clock, ArrowRight } from "lucide-react";
 
 const hours = [
-  { day: "Monday – Friday", time: "7:30 AM – 6:00 PM" },
-  { day: "Saturday", time: "8:00 AM – 3:00 PM" },
+  { day: "Monday – Friday", time: "8:00 AM – 6:00 PM" },
+  { day: "Saturday", time: "Closed" },
   { day: "Sunday", time: "Closed" },
 ];
 
@@ -13,8 +13,8 @@ const contactItems = [
   {
     icon: Phone,
     label: "Phone",
-    value: "(555) 555-0100",
-    href: "tel:+15555550100",
+    value: "(248) 347-2021",
+    href: "tel:+12483472021",
   },
   {
     icon: Mail,
@@ -25,7 +25,7 @@ const contactItems = [
   {
     icon: MapPin,
     label: "Address",
-    value: "123 Auto Drive, Detroit, MI 48201",
+    value: "24400 Novi Rd #102, Novi, MI 48375",
     href: "https://maps.google.com",
   },
 ];

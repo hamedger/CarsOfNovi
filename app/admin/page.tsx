@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 interface Submission {
   id: string; name: string; phone: string; email: string;
   vehicleYear: string; vehicleMake: string; vehicleModel: string;
+  vin: string; licensePlate: string;
   serviceNeeded: string; message: string; submittedAt: string;
 }
 
@@ -22,6 +23,51 @@ interface Coupon {
   description: string; code: string; terms: string;
   expires: string; accent: string; active: boolean;
 }
+
+const MOCK_SUBMISSIONS: Submission[] = [
+  {
+    id: "EST-MOCK-1001",
+    name: "Michael Turner",
+    phone: "(248) 555-0172",
+    email: "michael.turner@example.com",
+    vehicleYear: "2019",
+    vehicleMake: "Honda",
+    vehicleModel: "Accord",
+    vin: "1HGCV1F37KA123456",
+    licensePlate: "NVI-4821",
+    serviceNeeded: "Brake inspection and front pad replacement",
+    message: "Hearing a squeaking noise when braking at low speeds.",
+    submittedAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+  },
+  {
+    id: "EST-MOCK-1002",
+    name: "Sarah Johnson",
+    phone: "(313) 555-0198",
+    email: "sarah.johnson@example.com",
+    vehicleYear: "2016",
+    vehicleMake: "Ford",
+    vehicleModel: "Escape",
+    vin: "1FMCU0GX2GUA98765",
+    licensePlate: "ESC-9210",
+    serviceNeeded: "Check engine light diagnosis",
+    message: "Light came on yesterday and fuel mileage dropped.",
+    submittedAt: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
+  },
+  {
+    id: "EST-MOCK-1003",
+    name: "David Kim",
+    phone: "(734) 555-0134",
+    email: "david.kim@example.com",
+    vehicleYear: "2021",
+    vehicleMake: "Toyota",
+    vehicleModel: "RAV4",
+    vin: "",
+    licensePlate: "RAV-3312",
+    serviceNeeded: "Oil change and tire rotation",
+    message: "",
+    submittedAt: new Date(Date.now() - 1000 * 60 * 60 * 28).toISOString(),
+  },
+];
 
 const ACCENT_OPTIONS = [
   { label: "Blue", value: "#0EA5E9" },
@@ -259,7 +305,15 @@ function CouponForm({
 
 // ─── Reply Panel ─────────────────────────────────────────────────────────────
 
-function ReplyPanel({ submission, onClose }: { submission: Submission; onClose: () => void }) {
+function ReplyPanel({
+  submission,
+  onClose,
+  onSent,
+}: {
+  submission: Submission;
+  onClose: () => void;
+  onSent: (submissionId: string) => void;
+}) {
   const [message, setMessage] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -282,6 +336,7 @@ function ReplyPanel({ submission, onClose }: { submission: Submission; onClose: 
       });
       const data = await res.json();
       if (data.success) {
+        onSent(submission.id);
         setStatus("sent");
       } else {
         setErrorMsg(data.message || "Failed to send.");
@@ -496,44 +551,104 @@ function PaymentPanel({ submission, onClose }: { submission: Submission; onClose
 
 export default function AdminPage() {
   const router = useRouter();
-  const [tab, setTab] = useState<"estimates" | "coupons">("estimates");
+  const RESPONDED_ESTIMATES_KEY = "cars-admin-responded-estimates";
+  const CLOSED_ESTIMATES_KEY = "cars-admin-closed-estimates";
+  const [estimateFilter, setEstimateFilter] = useState<"open" | "responded" | "closed">("open");
   const [submissions, setSubmissions] = useState<Submission[]>([]);
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loadingEst, setLoadingEst] = useState(true);
-  const [loadingCoupons, setLoadingCoupons] = useState(true);
-  const [editingCoupon, setEditingCoupon] = useState<(Omit<Coupon, "id"> & { id?: string }) | null>(null);
-  const [showNewForm, setShowNewForm] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [payingTo, setPayingTo] = useState<string | null>(null);
+  const [respondedEstimateIds, setRespondedEstimateIds] = useState<string[]>([]);
+  const [closedEstimateIds, setClosedEstimateIds] = useState<string[]>([]);
 
   useEffect(() => {
-    fetch("/api/estimate").then((r) => r.json()).then((d) => { setSubmissions(d.submissions || []); setLoadingEst(false); }).catch(() => setLoadingEst(false));
-    fetchCoupons();
+    fetch("/api/estimate")
+      .then((r) => r.json())
+      .then((d) => {
+        const apiSubmissions = d.submissions || [];
+        setSubmissions(apiSubmissions.length ? apiSubmissions : MOCK_SUBMISSIONS);
+        setLoadingEst(false);
+      })
+      .catch(() => {
+        setSubmissions(MOCK_SUBMISSIONS);
+        setLoadingEst(false);
+      });
   }, []);
 
-  const fetchCoupons = () => {
-    setLoadingCoupons(true);
-    fetch("/api/coupons?all=true").then((r) => r.json()).then((d) => { setCoupons(d); setLoadingCoupons(false); }).catch(() => setLoadingCoupons(false));
+  useEffect(() => {
+    const stored = localStorage.getItem(RESPONDED_ESTIMATES_KEY);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        setRespondedEstimateIds(parsed.filter((id): id is string => typeof id === "string"));
+      }
+    } catch {
+      localStorage.removeItem(RESPONDED_ESTIMATES_KEY);
+    }
+  }, [RESPONDED_ESTIMATES_KEY]);
+
+  useEffect(() => {
+    localStorage.setItem(RESPONDED_ESTIMATES_KEY, JSON.stringify(respondedEstimateIds));
+  }, [respondedEstimateIds, RESPONDED_ESTIMATES_KEY]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(CLOSED_ESTIMATES_KEY);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        setClosedEstimateIds(parsed.filter((id): id is string => typeof id === "string"));
+      }
+    } catch {
+      localStorage.removeItem(CLOSED_ESTIMATES_KEY);
+    }
+  }, [CLOSED_ESTIMATES_KEY]);
+
+  useEffect(() => {
+    localStorage.setItem(CLOSED_ESTIMATES_KEY, JSON.stringify(closedEstimateIds));
+  }, [closedEstimateIds, CLOSED_ESTIMATES_KEY]);
+
+  const totalResponded = submissions.filter((submission) =>
+    respondedEstimateIds.includes(submission.id)
+  ).length;
+  const totalClosed = submissions.filter((submission) =>
+    closedEstimateIds.includes(submission.id)
+  ).length;
+
+  const openToRespondSubmissions = submissions.filter(
+    (submission) =>
+      !respondedEstimateIds.includes(submission.id) &&
+      !closedEstimateIds.includes(submission.id)
+  );
+  const respondedSubmissions = submissions.filter(
+    (submission) =>
+      respondedEstimateIds.includes(submission.id) &&
+      !closedEstimateIds.includes(submission.id)
+  );
+  const closedSubmissions = submissions.filter((submission) =>
+    closedEstimateIds.includes(submission.id)
+  );
+
+  const visibleSubmissions =
+    estimateFilter === "open"
+      ? openToRespondSubmissions
+      : estimateFilter === "responded"
+        ? respondedSubmissions
+        : closedSubmissions;
+
+  const markEstimateResponded = (submissionId: string) => {
+    setRespondedEstimateIds((prev) =>
+      prev.includes(submissionId) ? prev : [...prev, submissionId]
+    );
   };
 
-  const saveCoupon = async (data: Omit<Coupon, "id"> & { id?: string }) => {
-    const method = data.id ? "PUT" : "POST";
-    const res = await fetch("/api/coupons", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
-    const json = await res.json();
-    if (json.success) { fetchCoupons(); setEditingCoupon(null); setShowNewForm(false); }
-    else alert(json.errors ? Object.values(json.errors).join("\n") : json.message);
-  };
-
-  const toggleActive = async (coupon: Coupon) => {
-    await fetch("/api/coupons", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...coupon, active: !coupon.active }) });
-    fetchCoupons();
-  };
-
-  const deleteCoupon = async (id: string) => {
-    await fetch("/api/coupons", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
-    setDeleteConfirm(null);
-    fetchCoupons();
+  const toggleEstimateClosed = (submissionId: string) => {
+    setClosedEstimateIds((prev) =>
+      prev.includes(submissionId)
+        ? prev.filter((id) => id !== submissionId)
+        : [...prev, submissionId]
+    );
   };
 
   return (
@@ -564,23 +679,8 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 bg-[#0A0A0A] border border-[#1F1F1F] rounded-xl p-1 w-fit mb-8">
-          {(["estimates", "coupons"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-5 py-2 rounded-lg text-sm font-medium transition-all capitalize ${tab === t ? "bg-[#0EA5E9] text-white" : "text-gray-400 hover:text-white"}`}
-            >
-              {t === "estimates" ? `Estimates (${submissions.length})` : `Coupons (${coupons.length})`}
-            </button>
-          ))}
-        </div>
-
-        {/* ── ESTIMATES TAB ── */}
-        {tab === "estimates" && (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-[#0A0A0A] border border-[#1F1F1F] rounded-xl p-5">
                 <p className="text-gray-400 text-sm">Total Submissions</p>
                 <p className="text-4xl font-bold text-[#0EA5E9] mt-1">{submissions.length}</p>
@@ -592,21 +692,64 @@ export default function AdminPage() {
                 </p>
               </div>
               <div className="bg-[#0A0A0A] border border-[#1F1F1F] rounded-xl p-5">
-                <p className="text-gray-400 text-sm">Status</p>
-                <p className="text-lg font-semibold text-green-400 mt-1">● Operational</p>
+                <p className="text-gray-400 text-sm">Total Responded</p>
+                <p className="text-4xl font-bold text-green-400 mt-1">{totalResponded}</p>
               </div>
+              <div className="bg-[#0A0A0A] border border-[#1F1F1F] rounded-xl p-5">
+                <p className="text-gray-400 text-sm">Total Closed</p>
+                <p className="text-4xl font-bold text-amber-400 mt-1">{totalClosed}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-8">
+              <button
+                onClick={() => setEstimateFilter("open")}
+                className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  estimateFilter === "open"
+                    ? "bg-[#0EA5E9]/10 border-[#0EA5E9]/40 text-[#0EA5E9]"
+                    : "border-[#2A2A2A] text-gray-400 hover:text-white"
+                }`}
+              >
+                Open to Respond ({openToRespondSubmissions.length})
+              </button>
+              <button
+                onClick={() => setEstimateFilter("responded")}
+                className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  estimateFilter === "responded"
+                    ? "bg-green-500/10 border-green-500/40 text-green-400"
+                    : "border-[#2A2A2A] text-gray-400 hover:text-white"
+                }`}
+              >
+                Responded ({respondedSubmissions.length})
+              </button>
+              <button
+                onClick={() => setEstimateFilter("closed")}
+                className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  estimateFilter === "closed"
+                    ? "bg-amber-500/10 border-amber-500/40 text-amber-400"
+                    : "border-[#2A2A2A] text-gray-400 hover:text-white"
+                }`}
+              >
+                Closed ({closedSubmissions.length})
+              </button>
             </div>
 
             {loadingEst ? (
               <p className="text-center py-20 text-gray-500">Loading...</p>
-            ) : submissions.length === 0 ? (
+            ) : visibleSubmissions.length === 0 ? (
               <div className="text-center py-20 text-gray-500">
                 <ClipboardList size={48} className="mx-auto mb-4 opacity-30" />
-                <p>No estimate submissions yet.</p>
+                <p>
+                  {estimateFilter === "open"
+                    ? "No open estimates to respond."
+                    : estimateFilter === "responded"
+                      ? "No responded estimates yet."
+                      : "No closed estimates yet."}
+                </p>
               </div>
             ) : (
               <div className="space-y-4">
-                {submissions.map((sub) => (
+                {visibleSubmissions.map((sub) => (
                   <div key={sub.id} className="bg-[#0A0A0A] border border-[#1F1F1F] rounded-xl p-6 hover:border-[#0EA5E9]/30 transition-colors">
                     <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
                       <div>
@@ -627,7 +770,7 @@ export default function AdminPage() {
                           }`}
                         >
                           <Reply size={12} />
-                          Reply
+                          {respondedEstimateIds.includes(sub.id) ? "Reply Again" : "Reply"}
                         </button>
                         <button
                           onClick={() => { setReplyingTo(null); setPayingTo(payingTo === sub.id ? null : sub.id); }}
@@ -640,12 +783,25 @@ export default function AdminPage() {
                           <DollarSign size={12} />
                           Payment Link
                         </button>
+                        <button
+                          onClick={() => toggleEstimateClosed(sub.id)}
+                          className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                            closedEstimateIds.includes(sub.id)
+                              ? "bg-amber-500/10 border-amber-500/40 text-amber-400"
+                              : "border-[#2A2A2A] text-gray-400 hover:text-amber-300 hover:border-amber-500/30"
+                          }`}
+                        >
+                          <Check size={12} />
+                          {closedEstimateIds.includes(sub.id) ? "Reopen" : "Close"}
+                        </button>
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
                       <div className="flex items-center gap-2 text-gray-300"><Phone size={14} className="text-[#0EA5E9] shrink-0" />{sub.phone}</div>
                       <div className="flex items-center gap-2 text-gray-300"><Mail size={14} className="text-[#0EA5E9] shrink-0" />{sub.email}</div>
                       <div className="flex items-center gap-2 text-gray-300"><Car size={14} className="text-[#0EA5E9] shrink-0" />{sub.vehicleYear} {sub.vehicleMake} {sub.vehicleModel}</div>
+                      <div className="flex items-center gap-2 text-gray-300"><Tag size={14} className="text-[#0EA5E9] shrink-0" />Plate: {sub.licensePlate}</div>
+                      <div className="flex items-center gap-2 text-gray-300 md:col-span-2"><ClipboardList size={14} className="text-[#0EA5E9] shrink-0" />VIN: {sub.vin || "Not provided"}</div>
                       <div className="flex items-center gap-2 text-gray-300 md:col-span-2"><Wrench size={14} className="text-[#0EA5E9] shrink-0" />{sub.serviceNeeded}</div>
                     </div>
                     {sub.message && (
@@ -654,7 +810,11 @@ export default function AdminPage() {
                       </div>
                     )}
                     {replyingTo === sub.id && (
-                      <ReplyPanel submission={sub} onClose={() => setReplyingTo(null)} />
+                      <ReplyPanel
+                        submission={sub}
+                        onClose={() => setReplyingTo(null)}
+                        onSent={markEstimateResponded}
+                      />
                     )}
                     {payingTo === sub.id && (
                       <PaymentPanel submission={sub} onClose={() => setPayingTo(null)} />
@@ -663,114 +823,7 @@ export default function AdminPage() {
                 ))}
               </div>
             )}
-          </>
-        )}
-
-        {/* ── COUPONS TAB ── */}
-        {tab === "coupons" && (
-          <>
-            <InstructionManual />
-
-            {/* Add new button */}
-            {!showNewForm && !editingCoupon && (
-              <button
-                onClick={() => setShowNewForm(true)}
-                className="flex items-center gap-2 bg-[#0EA5E9] hover:bg-[#0284C7] text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition-colors mb-6"
-              >
-                <Plus size={16} />
-                Add New Coupon
-              </button>
-            )}
-
-            {/* New coupon form */}
-            {showNewForm && (
-              <CouponForm initial={EMPTY_COUPON} onSave={saveCoupon} onCancel={() => setShowNewForm(false)} />
-            )}
-
-            {/* Coupon list */}
-            {loadingCoupons ? (
-              <p className="text-center py-10 text-gray-500">Loading coupons...</p>
-            ) : coupons.length === 0 ? (
-              <div className="text-center py-20 text-gray-500">
-                <Tag size={48} className="mx-auto mb-4 opacity-30" />
-                <p>No coupons yet. Add your first one above.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {coupons.map((coupon) => (
-                  <div key={coupon.id}>
-                    {editingCoupon?.id === coupon.id ? (
-                      <CouponForm initial={editingCoupon} onSave={saveCoupon} onCancel={() => setEditingCoupon(null)} />
-                    ) : (
-                      <div className={`bg-[#0A0A0A] border rounded-xl p-5 transition-colors ${coupon.active ? "border-[#1F1F1F]" : "border-[#1F1F1F] opacity-50"}`}>
-                        <div className="flex flex-wrap items-center justify-between gap-4">
-                          <div className="flex items-center gap-4">
-                            <div className="w-2 h-10 rounded-full shrink-0" style={{ background: coupon.accent }} />
-                            <div>
-                              <div className="flex items-center gap-2 mb-0.5">
-                                <span className="text-white font-bold text-lg">{coupon.title}</span>
-                                <span className="text-gray-400 text-sm">— {coupon.subtitle}</span>
-                              </div>
-                              <div className="flex items-center gap-3 text-xs text-gray-500">
-                                <span className="font-mono bg-[#111] px-2 py-0.5 rounded">{coupon.code}</span>
-                                <span>Expires {coupon.expires}</span>
-                                <span
-                                  className="px-2 py-0.5 rounded-full"
-                                  style={{ background: `${coupon.accent}18`, color: coupon.accent }}
-                                >
-                                  {coupon.badge}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            {/* Toggle active */}
-                            <button
-                              onClick={() => toggleActive(coupon)}
-                              title={coupon.active ? "Disable coupon" : "Enable coupon"}
-                              className="p-2 rounded-lg hover:bg-[#1A1A1A] transition-colors"
-                            >
-                              {coupon.active
-                                ? <ToggleRight size={20} className="text-[#0EA5E9]" />
-                                : <ToggleLeft size={20} className="text-gray-600" />}
-                            </button>
-
-                            {/* Edit */}
-                            <button
-                              onClick={() => { setShowNewForm(false); setEditingCoupon(coupon); }}
-                              className="p-2 rounded-lg hover:bg-[#1A1A1A] text-gray-400 hover:text-white transition-colors"
-                              title="Edit coupon"
-                            >
-                              <Pencil size={15} />
-                            </button>
-
-                            {/* Delete */}
-                            {deleteConfirm === coupon.id ? (
-                              <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-1.5">
-                                <span className="text-red-400 text-xs">Delete?</span>
-                                <button onClick={() => deleteCoupon(coupon.id)} className="text-red-400 hover:text-red-300 text-xs font-semibold">Yes</button>
-                                <button onClick={() => setDeleteConfirm(null)} className="text-gray-500 hover:text-gray-300 text-xs">No</button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => setDeleteConfirm(coupon.id)}
-                                className="p-2 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-colors"
-                                title="Delete coupon"
-                              >
-                                <Trash2 size={15} />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
+        </>
       </div>
     </div>
   );

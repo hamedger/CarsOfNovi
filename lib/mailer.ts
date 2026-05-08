@@ -10,6 +10,8 @@ export interface EstimateEmailData {
   vehicleYear: string;
   vehicleMake: string;
   vehicleModel: string;
+  vin: string;
+  licensePlate: string;
   serviceNeeded: string;
   message: string;
   submittedAt: string;
@@ -43,6 +45,14 @@ export async function sendEstimateEmail(data: EstimateEmailData) {
           <tr>
             <td style="padding:10px 0;border-bottom:1px solid #1f1f1f;color:#9ca3af;font-size:13px;">Vehicle</td>
             <td style="padding:10px 0;border-bottom:1px solid #1f1f1f;color:#ffffff;font-size:14px;">${data.vehicleYear} ${data.vehicleMake} ${data.vehicleModel}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 0;border-bottom:1px solid #1f1f1f;color:#9ca3af;font-size:13px;">License Plate</td>
+            <td style="padding:10px 0;border-bottom:1px solid #1f1f1f;color:#ffffff;font-size:14px;">${data.licensePlate}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 0;border-bottom:1px solid #1f1f1f;color:#9ca3af;font-size:13px;">VIN</td>
+            <td style="padding:10px 0;border-bottom:1px solid #1f1f1f;color:#ffffff;font-size:14px;">${data.vin || "Not provided"}</td>
           </tr>
           <tr>
             <td style="padding:10px 0;border-bottom:1px solid #1f1f1f;color:#9ca3af;font-size:13px;">Service</td>

@@ -9,6 +9,8 @@ export interface EstimateSubmission {
   vehicleYear: string;
   vehicleMake: string;
   vehicleModel: string;
+  vin: string;
+  licensePlate: string;
   serviceNeeded: string;
   message: string;
   submittedAt: string;
@@ -21,7 +23,18 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const { name, phone, email, vehicleYear, vehicleMake, vehicleModel, serviceNeeded, message } = body;
+    const {
+      name,
+      phone,
+      email,
+      vehicleYear,
+      vehicleMake,
+      vehicleModel,
+      vin,
+      licensePlate,
+      serviceNeeded,
+      message,
+    } = body;
 
     // Validation
     const errors: Record<string, string> = {};
@@ -44,6 +57,12 @@ export async function POST(request: NextRequest) {
     if (!vehicleModel || vehicleModel.trim().length < 1) {
       errors.vehicleModel = "Please enter the vehicle model.";
     }
+    if (!licensePlate || licensePlate.trim().length < 2) {
+      errors.licensePlate = "Please enter a valid license plate.";
+    }
+    if (vin && !/^[A-HJ-NPR-Z0-9]{17}$/i.test(vin.trim())) {
+      errors.vin = "VIN must be 17 characters (letters and numbers).";
+    }
     if (!serviceNeeded) {
       errors.serviceNeeded = "Please select a service.";
     }
@@ -60,6 +79,8 @@ export async function POST(request: NextRequest) {
       vehicleYear: vehicleYear.trim(),
       vehicleMake: vehicleMake.trim(),
       vehicleModel: vehicleModel.trim(),
+      vin: vin?.trim().toUpperCase() || "",
+      licensePlate: licensePlate.trim().toUpperCase(),
       serviceNeeded,
       message: message?.trim() || "",
       submittedAt: new Date().toISOString(),

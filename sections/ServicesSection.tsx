@@ -1,51 +1,62 @@
 "use client";
 
 import { motion } from "framer-motion";
-import {
-  Wrench,
-  Activity,
-  CircleDot,
-  ArrowUpDown,
-  Droplets,
-  Zap,
-} from "lucide-react";
+import Image from "next/image";
 
 const services = [
   {
-    icon: Wrench,
     title: "Engine Repair",
+    image: "/services/engine-repair.jpg",
     description:
       "Complete engine diagnostics, rebuild, and repair. From minor tune-ups to full overhauls — we keep your engine running at peak performance.",
   },
   {
-    icon: Activity,
-    title: "Diagnostics",
+    title: "AC Repair",
+    image: "/services/ac-repair.jpg",
     description:
-      "State-of-the-art OBD-II scanning and multi-point inspection to identify issues before they become costly problems.",
+      "Stay cool with full A/C system diagnostics, leak detection, compressor service, and refrigerant recharge for dependable cabin comfort.",
   },
   {
-    icon: CircleDot,
-    title: "Brake Service",
+    title: "Heater Repair",
+    image: "/services/heater-repair.jpg",
     description:
-      "Brake pad replacement, rotor resurfacing, caliper service, and brake fluid flush. Your safety is our priority.",
+      "Reliable cabin heat restoration with heater core checks, blower motor repair, thermostat service, and climate control diagnostics.",
   },
   {
-    icon: ArrowUpDown,
-    title: "Suspension",
+    title: "Check Engine Light",
+    image: "/services/check-engine-light.jpg",
     description:
-      "Shocks, struts, ball joints, tie rods, and alignment. Restore the smooth, confident ride your vehicle was designed for.",
+      "Fast and accurate OBD-II diagnostics to pinpoint warning light causes and provide clear, cost-effective repair recommendations.",
   },
   {
-    icon: Droplets,
-    title: "Oil Change",
+    title: "Computer Programming",
+    image: "/services/computer-programming.jpg",
     description:
-      "Full synthetic, synthetic blend, and conventional oil changes with multi-point inspection. Fast, clean, and reliable.",
+      "Module coding, ECU programming, key programming, and software updates using professional tools to match factory specifications.",
   },
   {
-    icon: Zap,
-    title: "Electrical",
+    title: "Drivetrain & Differential",
+    image: "/services/drivetrain-differential.jpg",
     description:
-      "Battery, alternator, starter, wiring, and lighting repairs. We diagnose and fix complex electrical faults with precision.",
+      "Inspection and repair of axles, driveshafts, CV joints, and differential components to restore smooth, reliable power delivery.",
+  },
+  {
+    title: "Transmission Repair",
+    image: "/services/transmission-repair.jpg",
+    description:
+      "Automatic and manual transmission diagnostics, fluid service, clutch work, and repairs that improve shifting performance and longevity.",
+  },
+  {
+    title: "Wheel Alignment",
+    image: "/services/wheel-alignment.jpg",
+    description:
+      "Precision wheel alignment service to correct steering pull, reduce tire wear, and improve handling, safety, and fuel efficiency.",
+  },
+  {
+    title: "Scheduled Maintenance",
+    image: "/services/scheduled-maintenance.jpg",
+    description:
+      "Factory-recommended maintenance including inspections, fluid checks, filter changes, and tune-ups to keep your vehicle reliable.",
   },
 ];
 
@@ -97,19 +108,26 @@ export default function ServicesSection() {
           viewport={{ once: true, margin: "-60px" }}
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"
         >
-          {services.map(({ icon: Icon, title, description }) => (
+          {services.map(({ title, image, description }) => (
             <motion.div
               key={title}
               variants={cardVariants}
               whileHover={{ y: -4, transition: { duration: 0.2 } }}
-              className="group relative bg-[#0A0A0A] border border-[#1F1F1F] rounded-2xl p-7 cursor-default overflow-hidden hover:border-[#0EA5E9]/30 transition-colors duration-300"
+              className="group relative bg-[#0A0A0A] border border-[#1F1F1F] rounded-2xl p-5 cursor-default overflow-hidden hover:border-[#0EA5E9]/30 transition-colors duration-300"
             >
               {/* Hover glow */}
               <div className="absolute inset-0 bg-gradient-to-br from-[#0EA5E9]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-2xl" />
 
-              {/* Icon */}
-              <div className="relative w-12 h-12 bg-[#0EA5E9]/10 border border-[#0EA5E9]/20 rounded-xl flex items-center justify-center mb-5 group-hover:bg-[#0EA5E9]/20 group-hover:border-[#0EA5E9]/40 transition-all duration-300">
-                <Icon size={22} className="text-[#0EA5E9]" />
+              {/* Service photo */}
+              <div className="relative w-full h-40 rounded-xl overflow-hidden border border-[#1F1F1F] mb-5">
+                <Image
+                  src={image}
+                  alt={title}
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 33vw"
+                  className="object-cover group-hover:scale-105 transition-transform duration-500"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
               </div>
 
               <h3 className="text-white font-display font-semibold text-xl mb-2 group-hover:text-[#0EA5E9] transition-colors duration-300">

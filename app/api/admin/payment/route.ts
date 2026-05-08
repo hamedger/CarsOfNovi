@@ -88,10 +88,10 @@ export async function POST(request: NextRequest) {
           <div style="padding-top:20px;border-top:1px solid #e5e7eb;">
             <p style="margin:0;font-size:13px;color:#6b7280;">
               Questions? Call us at
-              <a href="tel:+15555550100" style="color:#0EA5E9;text-decoration:none;">(555) 555-0100</a>
+              <a href="tel:+12483472021" style="color:#0EA5E9;text-decoration:none;">(248) 347-2021</a>
               or reply to this email.
             </p>
-            <p style="margin:6px 0 0;font-size:12px;color:#9ca3af;">123 Auto Drive, Detroit, MI 48201</p>
+            <p style="margin:6px 0 0;font-size:12px;color:#9ca3af;">24400 Novi Rd #102, Novi, MI 48375</p>
           </div>
         </div>
       </div>

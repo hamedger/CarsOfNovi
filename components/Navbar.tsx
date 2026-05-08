@@ -11,7 +11,7 @@ const navLinks = [
   { label: "Services", href: "#services" },
   { label: "About", href: "#about" },
   { label: "Estimate", href: "#estimate" },
-  { label: "Testimonials", href: "#testimonials" },
+  { label: "Reviews", href: "#reviews" },
   { label: "Contact", href: "#contact" },
 ];
 
@@ -97,11 +97,11 @@ export default function Navbar() {
             {/* CTA + Mobile toggle */}
             <div className="flex items-center gap-3">
               <a
-                href="tel:+15555550100"
+                href="tel:+12483472021"
                 className="hidden md:flex items-center gap-2 text-sm font-medium text-gray-300 hover:text-[#0EA5E9] transition-colors"
               >
                 <Phone size={15} />
-                (555) 555-0100
+                (248) 347-2021
               </a>
               <button
                 onClick={() => handleNavClick("#estimate")}
@@ -153,11 +153,11 @@ export default function Navbar() {
               </Link>
               <div className="mt-3 pt-3 border-t border-[#1F1F1F] flex flex-col gap-2">
                 <a
-                  href="tel:+15555550100"
+                  href="tel:+12483472021"
                   className="flex items-center gap-2 text-gray-300 px-4 py-2"
                 >
                   <Phone size={15} className="text-[#0EA5E9]" />
-                  (555) 555-0100
+                  (248) 347-2021
                 </a>
                 <button
                   onClick={() => handleNavClick("#estimate")}

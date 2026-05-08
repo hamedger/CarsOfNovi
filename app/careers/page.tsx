@@ -177,11 +177,11 @@ export default function CareersPage() {
                   Email Your Resume
                 </a>
                 <a
-                  href="tel:+15555550100"
+                  href="tel:+12483472021"
                   className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/30 text-white font-semibold text-base px-8 py-3.5 rounded-xl transition-colors"
                 >
                   <Phone size={18} />
-                  Call (555) 555-0100
+                  Call (248) 347-2021
                 </a>
               </div>
               <p className="text-white/60 text-xs mt-4">carsofnovi@gmail.com</p>

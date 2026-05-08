@@ -11,6 +11,8 @@ type FormData = {
   vehicleYear: string;
   vehicleMake: string;
   vehicleModel: string;
+  vin: string;
+  licensePlate: string;
   serviceNeeded: string;
   message: string;
 };
@@ -37,6 +39,8 @@ const initialData: FormData = {
   vehicleYear: "",
   vehicleMake: "",
   vehicleModel: "",
+  vin: "",
+  licensePlate: "",
   serviceNeeded: "",
   message: "",
 };
@@ -150,7 +154,7 @@ export default function EstimateSection() {
             Request an Estimate
           </h2>
           <p className="text-gray-400 text-base max-w-md mx-auto">
-            Tell us about your vehicle and needed service. We&apos;ll get back to you within one business day.
+            Tell us about your vehicle and needed service. We&apos;ll get back to you within 48 hr.
           </p>
         </motion.div>
 
@@ -215,7 +219,7 @@ export default function EstimateSection() {
                     <input
                       id="phone"
                       type="tel"
-                      placeholder="(555) 555-0100"
+                      placeholder="(248) 347-2021"
                       value={formData.phone}
                       onChange={set("phone")}
                       className={inputClass(errors.phone)}
@@ -236,7 +240,7 @@ export default function EstimateSection() {
                 </InputField>
 
                 {/* Vehicle */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   <InputField label="Year *" id="vehicleYear" error={errors.vehicleYear}>
                     <input
                       id="vehicleYear"
@@ -267,6 +271,26 @@ export default function EstimateSection() {
                       value={formData.vehicleModel}
                       onChange={set("vehicleModel")}
                       className={inputClass(errors.vehicleModel)}
+                    />
+                  </InputField>
+                  <InputField label="License Plate *" id="licensePlate" error={errors.licensePlate}>
+                    <input
+                      id="licensePlate"
+                      type="text"
+                      placeholder="ABC1234"
+                      value={formData.licensePlate}
+                      onChange={set("licensePlate")}
+                      className={inputClass(errors.licensePlate)}
+                    />
+                  </InputField>
+                  <InputField label="VIN (Optional)" id="vin" error={errors.vin}>
+                    <input
+                      id="vin"
+                      type="text"
+                      placeholder="1HGCM82633A004352"
+                      value={formData.vin}
+                      onChange={set("vin")}
+                      className={inputClass(errors.vin)}
                     />
                   </InputField>
                 </div>
@@ -338,7 +362,7 @@ export default function EstimateSection() {
                 </motion.button>
 
                 <p className="text-center text-xs text-gray-600">
-                  We typically respond within 1 business day. No commitment required.
+                  We typically respond within 48 hr. No commitment required.
                 </p>
               </motion.form>
             )}

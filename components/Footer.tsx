@@ -1,11 +1,11 @@
-import { Phone, Mail, MapPin, Facebook, Instagram, Twitter } from "lucide-react";
+import { Phone, Mail, MapPin, Facebook, Instagram } from "lucide-react";
 import Image from "next/image";
 
 const footerLinks = [
   { label: "Services", href: "#services" },
   { label: "About", href: "#about" },
   { label: "Estimate", href: "#estimate" },
-  { label: "Testimonials", href: "#testimonials" },
+  { label: "Reviews", href: "#reviews" },
   { label: "Contact", href: "#contact" },
 ];
 
@@ -37,16 +37,28 @@ export default function Footer() {
               Committed to excellence in every repair. Certified mechanics delivering
               quality automotive services you can trust.
             </p>
-            <div className="flex gap-3 mt-5">
-              {[Facebook, Instagram, Twitter].map((Icon, i) => (
+            <div className="mt-5">
+              <p className="text-[11px] text-gray-500 tracking-wider uppercase mb-2">Connect With Us</p>
+              <div className="flex gap-3">
                 <a
-                  key={i}
-                  href="#"
+                  href="https://www.facebook.com/CARSofNOVI?mibextid=wwXIfr&rdid=hY3pADoV0Llpl0La&share_url=https%3A%2F%2Fwww.facebook.com%2Fshare%2F1aLropLQiR%2F%3Fmibextid%3DwwXIfr%26ref%3D1"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="C.A.R.S. Facebook"
                   className="w-9 h-9 bg-[#111] border border-[#1F1F1F] rounded-lg flex items-center justify-center text-gray-400 hover:text-[#0EA5E9] hover:border-[#0EA5E9]/30 transition-all"
                 >
-                  <Icon size={16} />
+                  <Facebook size={16} />
                 </a>
-              ))}
+                <a
+                  href="https://www.instagram.com/carsofnovi?igsh=ODk1d2pmM2x3eHU1&utm_source=qr"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="C.A.R.S. Instagram"
+                  className="w-9 h-9 bg-[#111] border border-[#1F1F1F] rounded-lg flex items-center justify-center text-gray-400 hover:text-[#0EA5E9] hover:border-[#0EA5E9]/30 transition-all"
+                >
+                  <Instagram size={16} />
+                </a>
+              </div>
             </div>
           </div>
 
@@ -77,11 +89,11 @@ export default function Footer() {
             <ul className="space-y-3">
               <li>
                 <a
-                  href="tel:+15555550100"
+                  href="tel:+12483472021"
                   className="flex items-start gap-2.5 text-gray-400 hover:text-[#0EA5E9] text-sm transition-colors"
                 >
                   <Phone size={15} className="text-[#0EA5E9] mt-0.5 shrink-0" />
-                  (555) 555-0100
+                  (248) 347-2021
                 </a>
               </li>
               <li>
@@ -95,7 +107,7 @@ export default function Footer() {
               </li>
               <li className="flex items-start gap-2.5 text-gray-400 text-sm">
                 <MapPin size={15} className="text-[#0EA5E9] mt-0.5 shrink-0" />
-                123 Auto Drive, Detroit, MI 48201
+                24400 Novi Rd #102, Novi, MI 48375
               </li>
             </ul>
           </div>
