@@ -83,7 +83,7 @@ export async function sendEstimateEmail(data: EstimateEmailData) {
 
   const { error } = await resend.emails.send({
     from: "C.A.R.S. Website <onboarding@resend.dev>", // Update to noreply@yourdomain.com once domain verified
-    to: "carsofnovi@gmail.com",
+    to: "info@carsofnovi.com",
     replyTo: data.email,
     subject: `New Estimate Request — ${data.name} · ${data.vehicleYear} ${data.vehicleMake} ${data.vehicleModel}`,
     html,
