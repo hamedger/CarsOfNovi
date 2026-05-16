@@ -101,26 +101,49 @@ export default function EstimateSection() {
     setStatus("loading");
     setServerError("");
 
+    // Client-side validation
+    const clientErrors: FieldErrors = {};
+    if (!formData.name || formData.name.trim().length < 2) clientErrors.name = "Name must be at least 2 characters.";
+    if (!formData.phone || !/^\+?[\d\s\-()]{7,15}$/.test(formData.phone)) clientErrors.phone = "Please enter a valid phone number.";
+    if (!formData.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) clientErrors.email = "Please enter a valid email address.";
+    if (!formData.vehicleYear || isNaN(Number(formData.vehicleYear)) || Number(formData.vehicleYear) < 1980 || Number(formData.vehicleYear) > new Date().getFullYear() + 1)
+      clientErrors.vehicleYear = "Please enter a valid vehicle year.";
+    if (!formData.vehicleMake || formData.vehicleMake.trim().length < 2) clientErrors.vehicleMake = "Please enter the vehicle make.";
+    if (!formData.vehicleModel || formData.vehicleModel.trim().length < 1) clientErrors.vehicleModel = "Please enter the vehicle model.";
+    if (!formData.licensePlate || formData.licensePlate.trim().length < 2) clientErrors.licensePlate = "Please enter a valid license plate.";
+    if (formData.vin && !/^[A-HJ-NPR-Z0-9]{17}$/i.test(formData.vin.trim())) clientErrors.vin = "VIN must be 17 characters (letters and numbers).";
+    if (!formData.serviceNeeded) clientErrors.serviceNeeded = "Please select a service.";
+
+    if (Object.keys(clientErrors).length > 0) {
+      setErrors(clientErrors);
+      setStatus("idle");
+      return;
+    }
+
     try {
-      const res = await fetch("/api/estimate", {
+      const refId = `EST-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
+      const res = await fetch("https://api.web3forms.com/submit", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          access_key: process.env.NEXT_PUBLIC_WEB3FORMS_KEY,
+          subject: `New Estimate Request — ${formData.name} · ${formData.vehicleYear} ${formData.vehicleMake} ${formData.vehicleModel}`,
+          from_name: "C.A.R.S. Website",
+          reference_id: refId,
+          ...formData,
+        }),
       });
+
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        if (data.errors) {
-          setErrors(data.errors);
-          setStatus("idle");
-        } else {
-          setServerError(data.message || "Something went wrong. Please try again.");
-          setStatus("error");
-        }
+        setServerError(data.message || "Something went wrong. Please try again.");
+        setStatus("error");
         return;
       }
 
-      setSuccessRef(data.referenceId);
+      setSuccessRef(refId);
       setStatus("success");
       setFormData(initialData);
       setErrors({});

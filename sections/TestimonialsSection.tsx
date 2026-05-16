@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Star, Quote } from "lucide-react";
 
@@ -81,37 +80,12 @@ const cardVariants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
 };
 
+const STATIC_RATING = 5.0;
+const STATIC_TOTAL_REVIEWS = 200;
+
 export default function TestimonialsSection() {
-  const [reviews, setReviews] = useState<ReviewItem[]>(fallbackReviews);
-  const [rating, setRating] = useState(5);
-  const [totalReviews, setTotalReviews] = useState(200);
-  const [placeUrl, setPlaceUrl] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    const loadGoogleReviews = async () => {
-      try {
-        const res = await fetch("/api/reviews/google");
-        const data = await res.json();
-        if (!active || !res.ok || !data?.success || !Array.isArray(data.reviews)) return;
-        if (data.reviews.length > 0) setReviews(data.reviews);
-        if (typeof data.rating === "number") setRating(data.rating);
-        if (typeof data.totalReviews === "number") setTotalReviews(data.totalReviews);
-        if (typeof data.placeUrl === "string") setPlaceUrl(data.placeUrl);
-      } catch {
-        // Keep local fallback reviews if Google fetch fails.
-      }
-    };
-    loadGoogleReviews();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const totalReviewLabel = useMemo(() => {
-    if (totalReviews >= 1000) return `${(totalReviews / 1000).toFixed(1)}k+ reviews`;
-    return `${totalReviews}+ reviews`;
-  }, [totalReviews]);
+  const reviews = fallbackReviews;
+  const totalReviewLabel = `${STATIC_TOTAL_REVIEWS}+ reviews`;
 
   return (
     <section id="reviews" className="relative py-24 bg-[#050505]">
@@ -137,19 +111,9 @@ export default function TestimonialsSection() {
                 <Star key={i} size={18} className="text-[#0EA5E9] fill-[#0EA5E9]" />
               ))}
             </div>
-            <span className="text-white font-semibold">{rating.toFixed(1)}</span>
+            <span className="text-white font-semibold">{STATIC_RATING.toFixed(1)}</span>
             <span className="text-gray-500 text-sm">· {totalReviewLabel}</span>
           </div>
-          {placeUrl && (
-            <a
-              href={placeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex mt-5 items-center gap-2 text-[#0EA5E9] border border-[#0EA5E9]/30 hover:bg-[#0EA5E9]/10 px-4 py-2 rounded-lg text-xs font-semibold transition-all"
-            >
-              Leave a Review on Google
-            </a>
-          )}
         </motion.div>
 
         <motion.div
