@@ -1,5 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendEstimateEmail } from "@/lib/mailer";
+import { appendEstimateToSheet, getEstimatesFromSheet } from "@/lib/googleSheets";
+
+export interface EstimateSubmission {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  vehicleYear: string;
+  vehicleMake: string;
+  vehicleModel: string;
+  vin: string;
+  licensePlate: string;
+  serviceNeeded: string;
+  message: string;
+  adminResponse?: string;
+  respondedAt?: string;
+  submittedAt: string;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,7 +53,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, errors }, { status: 400 });
     }
 
-    const submission = {
+    const submission: EstimateSubmission = {
       id: `EST-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
       name: name.trim(),
       phone: phone.trim(),
@@ -50,7 +68,25 @@ export async function POST(request: NextRequest) {
       submittedAt: new Date().toISOString(),
     };
 
-    await sendEstimateEmail(submission);
+    await appendEstimateToSheet({
+      referenceId: submission.id,
+      name: submission.name,
+      phone: submission.phone,
+      email: submission.email,
+      vehicleYear: submission.vehicleYear,
+      vehicleMake: submission.vehicleMake,
+      vehicleModel: submission.vehicleModel,
+      vin: submission.vin,
+      licensePlate: submission.licensePlate,
+      serviceNeeded: submission.serviceNeeded,
+      customerMessage: submission.message,
+      submittedAt: submission.submittedAt,
+    });
+
+    // Send email notification — non-blocking so a mail failure doesn't break the response
+    sendEstimateEmail(submission).catch((err) =>
+      console.error("[estimate] email send failed:", err)
+    );
 
     return NextResponse.json(
       {
@@ -60,10 +96,38 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     );
-  } catch {
+  } catch (error) {
+    console.error("[estimate] failed to save submission:", error);
     return NextResponse.json(
       { success: false, message: "An unexpected error occurred. Please try again." },
       { status: 500 }
     );
+  }
+}
+
+export async function GET() {
+  try {
+    const rows = await getEstimatesFromSheet();
+    const submissions: EstimateSubmission[] = rows.map((row) => ({
+      id: row.referenceId,
+      name: row.name,
+      phone: row.phone,
+      email: row.email,
+      vehicleYear: row.vehicleYear,
+      vehicleMake: row.vehicleMake,
+      vehicleModel: row.vehicleModel,
+      vin: row.vin,
+      licensePlate: row.licensePlate,
+      serviceNeeded: row.serviceNeeded,
+      message: row.customerMessage,
+      adminResponse: row.adminResponse,
+      respondedAt: row.respondedAt,
+      submittedAt: row.submittedAt,
+    }));
+
+    return NextResponse.json({ submissions }, { status: 200 });
+  } catch (error) {
+    console.error("[estimate] failed to read submissions:", error);
+    return NextResponse.json({ submissions: [] }, { status: 200 });
   }
 }

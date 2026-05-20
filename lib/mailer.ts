@@ -1,6 +1,4 @@
-import { Resend } from "resend";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { getResend } from "@/lib/resend";
 
 export interface EstimateEmailData {
   id: string;
@@ -81,7 +79,7 @@ export async function sendEstimateEmail(data: EstimateEmailData) {
     </div>
   `;
 
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: "C.A.R.S. Website <onboarding@resend.dev>", // Update to noreply@yourdomain.com once domain verified
     to: "info@carsofnovi.com",
     replyTo: data.email,

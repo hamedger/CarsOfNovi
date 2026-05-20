@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { getResend } from "@/lib/resend";
+import { updateEstimateResponseInSheet } from "@/lib/googleSheets";
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,7 +45,7 @@ export async function POST(request: NextRequest) {
       </div>
     `;
 
-    const { error } = await resend.emails.send({
+    const { error } = await getResend().emails.send({
       from: "C.A.R.S. <onboarding@resend.dev>", // TODO: change to noreply@yourdomain.com once domain verified in Resend
       to: customerEmail,
       replyTo: "carsofnovi@gmail.com",
@@ -55,6 +54,16 @@ export async function POST(request: NextRequest) {
     });
 
     if (error) throw new Error(error.message);
+
+    const respondedAt = new Date().toISOString();
+    const rowUpdated = await updateEstimateResponseInSheet({
+      referenceId,
+      responseMessage: message.trim(),
+      respondedAt,
+    });
+    if (!rowUpdated) {
+      console.warn("[admin/reply] estimate row not found in Google Sheets:", referenceId);
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {
