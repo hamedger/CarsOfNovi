@@ -68,7 +68,7 @@ export default function AboutSection() {
               C.A.R.S. (Complete Auto Repair Specialist) has been serving drivers in
               Novi and surrounding communities for over 20 years. Our team of ASE-certified
               mechanics brings decades of combined experience to every vehicle that rolls
-              through our doors. Led by trusted mechanic DJ Pilloci, we treat every car like
+              through our doors. Led by trusted mechanic DJ Plloci, we treat every car like
               it belongs to our own family and every customer like a neighbor.
             </p>
             <p className="text-gray-400 text-base leading-relaxed mb-8">
