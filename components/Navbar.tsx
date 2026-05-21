@@ -65,9 +65,9 @@ export default function Navbar() {
               <Image
                 src="/logo.png"
                 alt="C.A.R.S. Logo"
-                width={52}
-                height={52}
-                className="rounded-full object-cover"
+                width={160}
+                height={160}
+                className="h-12 w-auto object-contain"
                 priority
               />
             </a>

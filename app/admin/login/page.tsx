@@ -2,8 +2,9 @@
 
 import { useState, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
 import { motion } from "framer-motion";
-import { Lock, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
+import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 import { Suspense } from "react";
 
 function LoginForm() {
@@ -58,11 +59,15 @@ function LoginForm() {
       >
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex w-14 h-14 bg-[#0EA5E9]/10 border border-[#0EA5E9]/30 rounded-2xl items-center justify-center mb-4">
-            <Lock size={22} className="text-[#0EA5E9]" />
-          </div>
-          <h1 className="font-display text-2xl font-bold text-white tracking-widest">C.A.R.S.</h1>
-          <p className="text-gray-500 text-sm mt-1">Admin Portal</p>
+          <Image
+            src="/logo.png"
+            alt="C.A.R.S. Logo"
+            width={200}
+            height={200}
+            className="mx-auto h-28 w-auto object-contain mb-4"
+            priority
+          />
+          <p className="text-gray-500 text-sm">Admin Portal</p>
         </div>
 
         {/* Card */}

@@ -20,9 +20,9 @@ export default function Footer() {
               <Image
                 src="/logo.png"
                 alt="C.A.R.S. Logo"
-                width={64}
-                height={64}
-                className="rounded-full object-cover"
+                width={160}
+                height={160}
+                className="h-16 w-auto object-contain flex-shrink-0"
               />
               <div>
                 <span className="font-display font-bold text-xl tracking-widest text-white">
