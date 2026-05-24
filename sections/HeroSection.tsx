@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { ChevronDown, Calendar, FileText, Shield, Clock, Star } from "lucide-react";
 import Image from "next/image";
+import HolidayNotice from "@/components/HolidayNotice";
 
 const badges = [
   { icon: Shield, label: "ASE Certified" },
@@ -35,6 +36,7 @@ export default function HeroSection() {
 
       {/* Two-column layout */}
       <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 pt-[72px]">
+        <HolidayNotice />
         <div className="flex flex-col lg:flex-row items-center gap-10 lg:gap-16 min-h-[calc(100vh-72px)] py-8 lg:py-0">
 
           {/* LEFT — Logo */}
