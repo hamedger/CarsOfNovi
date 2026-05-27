@@ -1,8 +1,10 @@
 /** @type {import('next').NextConfig} */
+const isStaticExport = process.env.STATIC_EXPORT === "true";
+
 const nextConfig = {
-  output: "export",
+  ...(isStaticExport ? { output: "export" } : {}),
   images: {
-    unoptimized: true, // required for static export
+    unoptimized: isStaticExport,
     remotePatterns: [
       {
         protocol: "https",
