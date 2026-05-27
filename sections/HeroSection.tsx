@@ -47,13 +47,13 @@ export default function HeroSection() {
             className="flex-shrink-0 flex items-center justify-center lg:justify-start"
           >
             <div className="relative">
-              <div className="absolute inset-0 rounded-3xl bg-[#0EA5E9]/15 blur-3xl scale-105" />
+              <div className="absolute inset-0 bg-[#0EA5E9]/10 blur-3xl scale-110 pointer-events-none" />
               <Image
                 src="/logo.png"
                 alt="C.A.R.S. Complete Auto Repair Specialist"
                 width={1024}
                 height={1024}
-                className="relative object-contain shadow-2xl shadow-black/60 w-[220px] sm:w-[260px] lg:w-[300px] h-auto"
+                className="relative object-contain w-[220px] sm:w-[260px] lg:w-[300px] h-auto drop-shadow-[0_12px_40px_rgba(0,0,0,0.45)]"
                 priority
               />
             </div>
