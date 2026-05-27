@@ -1,5 +1,6 @@
 import { Phone, Mail, MapPin, Facebook, Instagram } from "lucide-react";
 import Image from "next/image";
+import { SHOP_EMAIL } from "@/lib/site";
 
 const footerLinks = [
   { label: "Services", href: "#services" },
@@ -98,11 +99,11 @@ export default function Footer() {
               </li>
               <li>
                 <a
-                  href="mailto:info@carsautoshop.com"
+                  href={`mailto:${SHOP_EMAIL}`}
                   className="flex items-start gap-2.5 text-gray-400 hover:text-[#0EA5E9] text-sm transition-colors"
                 >
                   <Mail size={15} className="text-[#0EA5E9] mt-0.5 shrink-0" />
-                  info@carsautoshop.com
+                  {SHOP_EMAIL}
                 </a>
               </li>
               <li className="flex items-start gap-2.5 text-gray-400 text-sm">

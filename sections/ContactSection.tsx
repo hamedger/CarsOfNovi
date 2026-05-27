@@ -2,6 +2,8 @@
 
 import { motion } from "framer-motion";
 import { Phone, Mail, MapPin, Clock, ArrowRight } from "lucide-react";
+import PaymentNotice from "@/components/PaymentNotice";
+import { SHOP_EMAIL } from "@/lib/site";
 
 const hours = [
   { day: "Monday – Friday", time: "8:00 AM – 6:00 PM" },
@@ -19,8 +21,8 @@ const contactItems = [
   {
     icon: Mail,
     label: "Email",
-    value: "info@carsautoshop.com",
-    href: "mailto:info@carsautoshop.com",
+    value: SHOP_EMAIL,
+    href: `mailto:${SHOP_EMAIL}`,
   },
   {
     icon: MapPin,
@@ -109,6 +111,8 @@ export default function ContactSection() {
                 ))}
               </div>
             </div>
+
+            <PaymentNotice />
 
             {/* CTA card */}
             <motion.div

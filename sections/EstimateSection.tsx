@@ -3,6 +3,8 @@
 import { useState, FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, AlertCircle, Loader2, Send } from "lucide-react";
+import PaymentNotice from "@/components/PaymentNotice";
+import { SHOP_EMAIL } from "@/lib/site";
 
 type FormData = {
   name: string;
@@ -123,21 +125,33 @@ export default function EstimateSection() {
     try {
       const refId = `EST-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
-      const res = await fetch("https://api.web3forms.com/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          access_key: process.env.NEXT_PUBLIC_WEB3FORMS_KEY,
-          subject: `New Estimate Request — ${formData.name} · ${formData.vehicleYear} ${formData.vehicleMake} ${formData.vehicleModel}`,
-          from_name: "C.A.R.S. Website",
-          reference_id: refId,
-          ...formData,
-        }),
-      });
+      const res = await fetch(
+        `https://formsubmit.co/ajax/${encodeURIComponent(SHOP_EMAIL)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            _captcha: false,
+            _template: "table",
+            _subject: `New Estimate Request — ${formData.name} · ${formData.vehicleYear} ${formData.vehicleMake} ${formData.vehicleModel}`,
+            reference_id: refId,
+            name: formData.name,
+            phone: formData.phone,
+            email: formData.email,
+            vehicle_year: formData.vehicleYear,
+            vehicle_make: formData.vehicleMake,
+            vehicle_model: formData.vehicleModel,
+            vin: formData.vin || "Not provided",
+            license_plate: formData.licensePlate,
+            service_needed: formData.serviceNeeded,
+            message: formData.message || "—",
+          }),
+        }
+      );
 
       const data = await res.json();
 
-      if (!res.ok || !data.success) {
+      if (!res.ok || data.success !== "true") {
         setServerError(data.message || "Something went wrong. Please try again.");
         setStatus("error");
         return;
@@ -363,6 +377,8 @@ export default function EstimateSection() {
                     </motion.div>
                   )}
                 </AnimatePresence>
+
+                <PaymentNotice />
 
                 <motion.button
                   whileHover={{ scale: 1.01 }}
