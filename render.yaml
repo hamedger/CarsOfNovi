@@ -1,3 +1,6 @@
+# Blueprint: set Build Command to `npm install && npm run build` if not using this file.
+# postinstall also runs `next build` when RENDER=true (fallback if dashboard is only `npm install`).
+
 services:
   - type: web
     name: carsofnovi

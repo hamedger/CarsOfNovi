@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "build:static": "STATIC_EXPORT=true next build",
+    "postinstall": "node scripts/render-postinstall.mjs",
     "start": "next start -p ${PORT:-3000}",
     "lint": "next lint"
   },
