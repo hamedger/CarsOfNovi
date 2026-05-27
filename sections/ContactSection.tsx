@@ -112,7 +112,7 @@ export default function ContactSection() {
               </div>
             </div>
 
-            <PaymentNotice />
+            <PaymentNotice prominent />
 
             {/* CTA card */}
             <motion.div

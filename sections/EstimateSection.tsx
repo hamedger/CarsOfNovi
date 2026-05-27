@@ -193,6 +193,9 @@ export default function EstimateSection() {
           <p className="text-gray-400 text-base max-w-md mx-auto">
             Tell us about your vehicle and needed service. We&apos;ll get back to you within 48 hr.
           </p>
+          <div className="mt-6 max-w-lg mx-auto">
+            <PaymentNotice prominent />
+          </div>
         </motion.div>
 
         <motion.div

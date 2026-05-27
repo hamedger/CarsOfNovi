@@ -1,5 +1,6 @@
 import { Phone, Mail, MapPin, Facebook, Instagram } from "lucide-react";
 import Image from "next/image";
+import PaymentNotice from "@/components/PaymentNotice";
 import { SHOP_EMAIL } from "@/lib/site";
 
 const footerLinks = [
@@ -38,6 +39,7 @@ export default function Footer() {
               Committed to excellence in every repair. Certified mechanics delivering
               quality automotive services you can trust.
             </p>
+            <PaymentNotice compact className="mt-4 max-w-xs" />
             <div className="mt-5">
               <p className="text-[11px] text-gray-500 tracking-wider uppercase mb-2">Connect With Us</p>
               <div className="flex gap-3">
