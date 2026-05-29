@@ -32,7 +32,6 @@ jobs:
         run: npm run build:static
         env:
           STATIC_EXPORT: "true"
-          NEXT_PUBLIC_WEB3FORMS_KEY: ${{ secrets.NEXT_PUBLIC_WEB3FORMS_KEY }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

@@ -2,8 +2,14 @@
 
 import { useState, FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, AlertCircle, Loader2, Send } from "lucide-react";
+import { CheckCircle, AlertCircle, Loader2, Send, Mail } from "lucide-react";
 import PaymentNotice from "@/components/PaymentNotice";
+import { SHOP_EMAIL } from "@/lib/site";
+import {
+  buildEstimateMailtoUrl,
+  createEstimateReferenceId,
+  submitEstimateViaFormSubmit,
+} from "@/lib/estimateSubmit";
 
 type FormData = {
   name: string;
@@ -89,6 +95,45 @@ export default function EstimateSection() {
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [successRef, setSuccessRef] = useState("");
   const [serverError, setServerError] = useState("");
+  const [pendingMailtoRef, setPendingMailtoRef] = useState<string | null>(null);
+  const [sentViaMailto, setSentViaMailto] = useState(false);
+
+  const validateForm = (): FieldErrors => {
+    const clientErrors: FieldErrors = {};
+    if (!formData.name || formData.name.trim().length < 2) clientErrors.name = "Name must be at least 2 characters.";
+    if (!formData.phone || !/^\+?[\d\s\-()]{7,15}$/.test(formData.phone)) clientErrors.phone = "Please enter a valid phone number.";
+    if (!formData.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) clientErrors.email = "Please enter a valid email address.";
+    if (!formData.vehicleYear || isNaN(Number(formData.vehicleYear)) || Number(formData.vehicleYear) < 1980 || Number(formData.vehicleYear) > new Date().getFullYear() + 1)
+      clientErrors.vehicleYear = "Please enter a valid vehicle year.";
+    if (!formData.vehicleMake || formData.vehicleMake.trim().length < 2) clientErrors.vehicleMake = "Please enter the vehicle make.";
+    if (!formData.vehicleModel || formData.vehicleModel.trim().length < 1) clientErrors.vehicleModel = "Please enter the vehicle model.";
+    if (!formData.licensePlate || formData.licensePlate.trim().length < 2) clientErrors.licensePlate = "Please enter a valid license plate.";
+    if (formData.vin && !/^[A-HJ-NPR-Z0-9]{17}$/i.test(formData.vin.trim())) clientErrors.vin = "VIN must be 17 characters (letters and numbers).";
+    if (!formData.serviceNeeded) clientErrors.serviceNeeded = "Please select a service.";
+    return clientErrors;
+  };
+
+  const openMailtoEstimate = (refId?: string) => {
+    const referenceId = refId ?? createEstimateReferenceId();
+    window.location.href = buildEstimateMailtoUrl(formData, referenceId);
+    setSuccessRef(referenceId);
+    setSentViaMailto(true);
+    setStatus("success");
+    setFormData(initialData);
+    setErrors({});
+    setServerError("");
+    setPendingMailtoRef(null);
+  };
+
+  const handleMailtoClick = () => {
+    setServerError("");
+    const clientErrors = validateForm();
+    if (Object.keys(clientErrors).length > 0) {
+      setErrors(clientErrors);
+      return;
+    }
+    openMailtoEstimate(pendingMailtoRef ?? undefined);
+  };
 
   const set = (field: keyof FormData) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -102,18 +147,7 @@ export default function EstimateSection() {
     setStatus("loading");
     setServerError("");
 
-    // Client-side validation
-    const clientErrors: FieldErrors = {};
-    if (!formData.name || formData.name.trim().length < 2) clientErrors.name = "Name must be at least 2 characters.";
-    if (!formData.phone || !/^\+?[\d\s\-()]{7,15}$/.test(formData.phone)) clientErrors.phone = "Please enter a valid phone number.";
-    if (!formData.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) clientErrors.email = "Please enter a valid email address.";
-    if (!formData.vehicleYear || isNaN(Number(formData.vehicleYear)) || Number(formData.vehicleYear) < 1980 || Number(formData.vehicleYear) > new Date().getFullYear() + 1)
-      clientErrors.vehicleYear = "Please enter a valid vehicle year.";
-    if (!formData.vehicleMake || formData.vehicleMake.trim().length < 2) clientErrors.vehicleMake = "Please enter the vehicle make.";
-    if (!formData.vehicleModel || formData.vehicleModel.trim().length < 1) clientErrors.vehicleModel = "Please enter the vehicle model.";
-    if (!formData.licensePlate || formData.licensePlate.trim().length < 2) clientErrors.licensePlate = "Please enter a valid license plate.";
-    if (formData.vin && !/^[A-HJ-NPR-Z0-9]{17}$/i.test(formData.vin.trim())) clientErrors.vin = "VIN must be 17 characters (letters and numbers).";
-    if (!formData.serviceNeeded) clientErrors.serviceNeeded = "Please select a service.";
+    const clientErrors = validateForm();
 
     if (Object.keys(clientErrors).length > 0) {
       setErrors(clientErrors);
@@ -121,53 +155,38 @@ export default function EstimateSection() {
       return;
     }
 
-    try {
-      const refId = `EST-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-      const accessKey = process.env.NEXT_PUBLIC_WEB3FORMS_KEY;
+    const refId = createEstimateReferenceId();
 
-      if (!accessKey) {
+    try {
+      const result = await submitEstimateViaFormSubmit(formData, refId);
+
+      if (result.ok) {
+        setSuccessRef(refId);
+        setSentViaMailto(false);
+        setStatus("success");
+        setFormData(initialData);
+        setErrors({});
+        setPendingMailtoRef(null);
+        return;
+      }
+
+      if (result.needsActivation) {
+        setPendingMailtoRef(refId);
         setServerError(
-          "Online estimates are temporarily unavailable. Please call (248) 347-2021 or email info@carsofnovi.com."
+          `We're finishing a one-time setup for online forms. Check ${SHOP_EMAIL} for an "Activate Form" email from FormSubmit and click the link once. Or send your request using the button below.`
         );
         setStatus("error");
         return;
       }
 
-      const res = await fetch("https://api.web3forms.com/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          access_key: accessKey,
-          subject: `New Estimate Request — ${formData.name} · ${formData.vehicleYear} ${formData.vehicleMake} ${formData.vehicleModel}`,
-          from_name: "C.A.R.S. Website",
-          name: formData.name,
-          email: formData.email,
-          phone: formData.phone,
-          reference_id: refId,
-          vehicle_year: formData.vehicleYear,
-          vehicle_make: formData.vehicleMake,
-          vehicle_model: formData.vehicleModel,
-          vin: formData.vin || "Not provided",
-          license_plate: formData.licensePlate,
-          service_needed: formData.serviceNeeded,
-          message: formData.message || "—",
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        setServerError(data.message || "Something went wrong. Please try again.");
-        setStatus("error");
-        return;
-      }
-
-      setSuccessRef(refId);
-      setStatus("success");
-      setFormData(initialData);
-      setErrors({});
+      setServerError(
+        result.message || "Could not send online. Use the email button below or call (248) 347-2021."
+      );
+      setPendingMailtoRef(refId);
+      setStatus("error");
     } catch {
-      setServerError("Network error. Please check your connection and try again.");
+      setServerError("Network error. Use the email button below or call (248) 347-2021.");
+      setPendingMailtoRef(refId);
       setStatus("error");
     }
   };
@@ -224,14 +243,19 @@ export default function EstimateSection() {
                   Request Received!
                 </h3>
                 <p className="text-gray-400 mb-4">
-                  We&apos;ll review your request and contact you shortly.
+                  {sentViaMailto
+                    ? "Your email app should open — tap Send to complete your estimate request."
+                    : "We'll review your request and contact you shortly."}
                 </p>
                 <p className="text-xs text-gray-500 font-mono bg-[#111] border border-[#1F1F1F] px-4 py-2 rounded-lg inline-block">
                   Reference: {successRef}
                 </p>
                 <div className="mt-6">
                   <button
-                    onClick={() => setStatus("idle")}
+                    onClick={() => {
+                      setStatus("idle");
+                      setSentViaMailto(false);
+                    }}
                     className="text-[#0EA5E9] text-sm hover:underline"
                   >
                     Submit another request
@@ -386,6 +410,17 @@ export default function EstimateSection() {
                   )}
                 </AnimatePresence>
 
+                {pendingMailtoRef && status === "error" && (
+                  <button
+                    type="button"
+                    onClick={handleMailtoClick}
+                    className="w-full flex items-center justify-center gap-2 border border-[#0EA5E9]/40 bg-[#0EA5E9]/10 hover:bg-[#0EA5E9]/20 text-[#0EA5E9] font-semibold text-sm py-3.5 rounded-xl transition-colors"
+                  >
+                    <Mail size={18} />
+                    Send via your email app instead
+                  </button>
+                )}
+
                 <PaymentNotice />
 
                 <motion.button
@@ -408,8 +443,20 @@ export default function EstimateSection() {
                   )}
                 </motion.button>
 
-                <p className="text-center text-xs text-gray-600">
+                <p className="text-center text-xs text-gray-500 leading-relaxed">
                   We typically respond within 48 hr. No commitment required.
+                  <br />
+                  <button
+                    type="button"
+                    onClick={handleMailtoClick}
+                    className="text-[#0EA5E9] hover:underline mt-1"
+                  >
+                    Send using your email app
+                  </button>
+                  {" · "}
+                  <a href="tel:+12483472021" className="text-[#0EA5E9] hover:underline">
+                    (248) 347-2021
+                  </a>
                 </p>
               </motion.form>
             )}
