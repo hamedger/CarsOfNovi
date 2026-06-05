@@ -116,7 +116,7 @@ export default function HeroSection() {
               <motion.button
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
-                onClick={() => window.openBookingWidget?.()}
+                onClick={() => window.bookaptWidget?.openBooking()}
                 className="flex items-center justify-center gap-2.5 bg-white/5 hover:bg-white/10 border border-white/20 hover:border-white/30 text-white font-semibold text-base px-8 py-4 rounded-xl transition-all backdrop-blur-sm"
               >
                 <Calendar size={18} />

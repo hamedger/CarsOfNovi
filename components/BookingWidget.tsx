@@ -7,16 +7,17 @@ declare global {
     BookAPTConfig?: {
       businessId: string;
       position: string;
+      embedMode: string;
       theme: string;
       buttonText: string;
       buttonColor: string;
       showPoweredBy: boolean;
+      hideFloatingButton: boolean;
     };
     bookaptWidget?: {
-      showWidget: () => void;
+      openBooking: () => void;
       bookService: (serviceId: string, businessId: string) => void;
     };
-    openBookingWidget?: () => void;
   }
 }
 
@@ -24,28 +25,19 @@ export default function BookingWidget() {
   useEffect(() => {
     window.BookAPTConfig = {
       businessId: "PxaR98auJkN4a0YuTORaiziFo5e2",
-      position: "floating",
+      position: "button",
+      embedMode: "fullscreen",
       theme: "default",
       buttonText: "Book Appointment",
       buttonColor: "#667eea",
       showPoweredBy: true,
+      hideFloatingButton: true,
     };
 
     const existing = document.querySelector(
       'script[data-business-id="PxaR98auJkN4a0YuTORaiziFo5e2"]'
     );
     if (existing) return;
-
-    // Expose a global helper other components can call
-    window.openBookingWidget = () => {
-      if (window.bookaptWidget?.showWidget) {
-        window.bookaptWidget.showWidget();
-        return;
-      }
-      // Fallback: click the floating button the widget renders
-      const btn = document.querySelector<HTMLElement>('.bookapt-float-btn, [class*="bookapt-btn"]');
-      btn?.click();
-    };
 
     const script = document.createElement("script");
     script.src =
@@ -59,7 +51,6 @@ export default function BookingWidget() {
         'script[data-business-id="PxaR98auJkN4a0YuTORaiziFo5e2"]'
       );
       if (s) s.remove();
-      delete window.openBookingWidget;
     };
   }, []);
 
