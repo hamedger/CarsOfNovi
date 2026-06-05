@@ -22,6 +22,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="scroll-smooth">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.BookAPTConfig={businessId:"PxaR98auJkN4a0YuTORaiziFo5e2",position:"button",embedMode:"fullscreen",theme:"default",buttonText:"Book Appointment",buttonColor:"#667eea",showPoweredBy:true,hideFloatingButton:true};`,
+          }}
+        />
+      </head>
       <body className="bg-black text-white antialiased">{children}</body>
     </html>
   );
