@@ -23,8 +23,7 @@ export const HOLIDAY_CLOSURES: HolidayClosure[] = [
     date: "2026-07-03",
     name: "Independence Day",
     closed: true,
-    observanceLabel: "In Observance of Independence Day",
-    footerText: "We Honor & Remember",
+    observanceLabel: "Happy Independence Day!",
   },
   {
     id: "labor-day-2026",
