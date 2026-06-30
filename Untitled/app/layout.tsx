@@ -1,11 +1,5 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
 import "./globals.css";
-
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  viewportFit: "cover",
-};
 
 export const metadata: Metadata = {
   title: "C.A.R.S. – Complete Auto Repair Specialist",
@@ -28,13 +22,6 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="scroll-smooth">
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `window.BookAPTConfig={businessId:"PxaR98auJkN4a0YuTORaiziFo5e2",position:"button",embedMode:"fullscreen",theme:"default",buttonText:"Book Appointment",buttonColor:"#667eea",showPoweredBy:true,hideFloatingButton:true};`,
-          }}
-        />
-      </head>
       <body className="bg-black text-white antialiased">{children}</body>
     </html>
   );

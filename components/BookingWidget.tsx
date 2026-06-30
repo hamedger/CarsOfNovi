@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 
 const BUSINESS_ID = "PxaR98auJkN4a0YuTORaiziFo5e2";
-const BOOKING_URL = `https://bookapt.io/?widgetBook=1&businessId=${encodeURIComponent(BUSINESS_ID)}`;
+const BOOKING_URL = `https://bookapt.io/app.html?widgetBook=1&businessId=${encodeURIComponent(BUSINESS_ID)}`;
 const OVERLAY_ID = "bookapt-fullscreen-overlay";
 
 declare global {
@@ -43,7 +43,7 @@ function openFullscreenBooking() {
 
   const header = document.createElement("div");
   header.style.cssText =
-    "display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#111;border-bottom:1px solid #222;";
+    "display:flex;align-items:center;justify-content:space-between;padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top,0px));padding-left:calc(16px + env(safe-area-inset-left,0px));padding-right:calc(16px + env(safe-area-inset-right,0px));background:#111;border-bottom:1px solid #222;";
 
   const title = document.createElement("span");
   title.textContent = "Book Appointment";
