@@ -74,14 +74,14 @@ export async function sendEstimateEmail(data: EstimateEmailData) {
       </div>
 
       <div style="padding:16px 32px;border-top:1px solid #1f1f1f;text-align:center;">
-        <p style="margin:0;color:#4b5563;font-size:12px;">C.A.R.S. — Complete Auto Repair Specialist · info@carsofnovi.com</p>
+        <p style="margin:0;color:#4b5563;font-size:12px;">C.A.R.S. — Complete Auto Repair Specialist · carsofnovi@gmail.com</p>
       </div>
     </div>
   `;
 
   const { error } = await getResend().emails.send({
     from: "C.A.R.S. Website <onboarding@resend.dev>", // Update to noreply@yourdomain.com once domain verified
-    to: "info@carsofnovi.com",
+    to: "carsofnovi@gmail.com",
     replyTo: data.email,
     subject: `New Estimate Request — ${data.name} · ${data.vehicleYear} ${data.vehicleMake} ${data.vehicleModel}`,
     html,
